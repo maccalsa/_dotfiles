@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Ensure script fails on error
+set -e
+
+# Install necessary dependencies first
+sudo apt update
+
+echo "[1/4] Installing dependencies (git, curl, stow, unzip, zsh)..."
+sudo apt install -y git stow curl wget unzip zsh
+
+echo "[2/4] Installing Nerd Fonts (JetBrains & Meslo)..."
+./fonts/install_fonts.sh
+
+echo "[3/4] Installing Alacritty Terminal..."
+sudo apt install -y alacritty
+
+echo "[4/4] Stowing dotfiles for alacritty"
+stow --dir=stow --target=~/ alacritty
+
+echo "Initial terminal setup complete!"
+echo "You can now launch Alacritty and proceed to install Zsh & other configs."
+echo "1) Run backup/restore_key.sh to restore your dotfiles."
+echo "2) Run ./zsh_setup.sh to install Zsh and other configs."
+
+
+

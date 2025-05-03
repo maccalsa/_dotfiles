@@ -1,0 +1,83 @@
+[alias]
+    st = status
+    ci = commit
+    br = branch
+    co = checkout
+    df = diff
+    lg = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(bold yellow)%d%C(reset)'
+    last = log -1 HEAD
+    unstage = reset HEAD --
+    amend = commit --amend
+    cm = !git add -A && git commit -m
+    save = !git add -A && git commit -m 'SAVEPOINT'
+    wip = !git add -A && git commit -m 'WIP'
+    undo = reset HEAD~1 --mixed
+    rollback = reset --hard
+
+[color]
+    ui = auto
+
+[color "branch"]
+    current = yellow reverse
+    local = yellow
+    remote = green
+
+[color "diff"]
+    meta = yellow bold
+    frag = magenta bold
+    old = red bold
+    new = green bold
+
+[color "status"]
+    added = yellow
+    changed = green
+    untracked = cyan
+
+[core]
+    editor = nvim
+    excludesfile = ~/.gitignore_global
+    autocrlf = input
+    whitespace = fix,-indent-with-non-tab,trailing-space,cr-at-eol
+
+#[merge]
+ #   tool = vimdiff
+
+#[mergetool "vimdiff"]
+ #   cmd = vimdiff $BASE $LOCAL $REMOTE $MERGED
+ #   trustExitCode = true
+
+[push]
+    default = current
+
+[pull]
+    rebase = false
+
+[init]
+    defaultBranch = main
+
+[rerere]
+    enabled = true
+
+[include]
+    path = ~/.private_gitconfig
+  
+[user]
+  email = maccalsa@googlemail.com
+  name = Stuart MacCallum
+
+[core]
+  pager = delta
+
+[interactive]
+  diffFilter = delta --color-only
+
+[delta]
+  navigate = true # use n and N to move between different diff sections
+  side-by-side = true
+
+[merge]
+  conflictstyle = diff3
+
+[diff]
+  colorMoved = default
+
