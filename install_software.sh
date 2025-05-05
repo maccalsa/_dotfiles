@@ -10,15 +10,25 @@
 
 ./installers/install_languages.sh
 
-### Install fzf-git
-echo "Installing fzf-git"
-git clone https://github.com/junegunn/fzf.git ~/.fzf
+### fzf-git
 
-### Nix
+./installers/install_fzf-git.sh
 
-./nix/install_nix.sh
+### install docker
 
-### configure
+./installers/install_docker.sh
+
+echo "💡 the next stage is to install the nix script found at ./nix/install_nix.sh"
+
+
+
+
+
+
+
+
+
+
 
 
 
