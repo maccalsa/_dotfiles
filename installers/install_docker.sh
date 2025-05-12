@@ -14,11 +14,11 @@ fi
 
 # Update package index
 echo "Updating package index..."
-apt-get update
+sudo apt update
 
 # Install prerequisites
 echo "Installing prerequisites..."
-apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
 
 # Add Docker's official GPG key
 echo "Adding Docker's official GPG key..."
@@ -26,15 +26,15 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
 
 # Add Docker's official repository
 echo "Adding Docker's official repository..."
-add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 
 # Update package index again
 echo "Updating package index again..."
-apt-get update
+sudo apt update
 
 # Install Docker
 echo "Installing Docker..."
-apt-get install -y docker-ce
+sudo apt install -y docker-ce
 
 # Verify Docker installation
 echo "Verifying Docker installation..."
@@ -42,11 +42,11 @@ docker --version
 
 # Enable Docker service
 echo "Enabling Docker service..."
-systemctl enable docker
+sudo systemctl enable docker
 
 # Start Docker service
 echo "Starting Docker service..."
-systemctl start docker
+sudo systemctl start docker
 
 # Install Docker Compose
 echo "Installing Docker Compose..."
