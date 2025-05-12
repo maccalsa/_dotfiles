@@ -15,19 +15,19 @@ read -p "Do you want to install python? (Y/n): " PYTHON_INSTALL
 PYTHON_INSTALL=${PYTHON_INSTALL:-y}
 if [ "$PYTHON_INSTALL" = "y" ]; then
   # Install Python
-  ./languages/python.sh
+  ./languages/pyenv.sh
 fi
 
 read -p "Do you want to install node? (Y/n): " NODE_INSTALL
 NODE_INSTALL=${NODE_INSTALL:-y}
 if [ "$NODE_INSTALL" = "y" ]; then
   # Install Node
-  ./languages/node.sh
+  ./languages/nvm.sh
 fi
 
 read -p "Do you want to install java and kotlin? (Y/n): " JAVA_INSTALL
 JAVA_INSTALL=${JAVA_INSTALL:-y}
 if [ "$JAVA_INSTALL" = "y" ]; then
   # Install Java
-  ./languages/java.sh
+  ./languages/sdkman.sh
 fi

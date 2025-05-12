@@ -13,7 +13,7 @@ sudo apt upgrade -y
 sudo apt update
 
 echo "[1/4] Installing dependencies (git, curl, stow, unzip, zsh)..."
-sudo apt install -y git stow curl wget unzip zsh
+sudo apt install -y git stow curl wget zip unzip zsh
 
 echo "[2/4] Installing Nerd Fonts (JetBrains & Meslo)..."
 ./fonts/install_fonts.sh

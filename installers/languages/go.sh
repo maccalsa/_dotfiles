@@ -24,7 +24,7 @@ go install github.com/google/wire/cmd/wire@latest
 go install github.com/a-h/templ/cmd/templ@latest
 
 # Air (live-reload for Go projects)
-go install github.com/cosmtrek/air@latest
+go install github.com/air-verse/air@latest
 
 wire help
 templ version
