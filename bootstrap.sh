@@ -3,6 +3,12 @@
 # Ensure script fails on error
 set -e
 
+# Upgrade the system
+sudo apt update
+
+# Upgrade the system
+sudo apt upgrade -y
+
 # Install necessary dependencies first
 sudo apt update
 
@@ -16,7 +22,7 @@ echo "[3/4] Installing Alacritty Terminal..."
 sudo apt install -y alacritty
 
 echo "[4/4] Stowing dotfiles for alacritty"
-stow --dir=stow --target=~/ alacritty
+stow --dir=stow --target="$HOME" alacritty
 
 echo "Initial terminal setup complete!"
 echo "You can now launch Alacritty and proceed to install Zsh & other configs."
