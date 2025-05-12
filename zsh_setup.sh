@@ -28,10 +28,10 @@ romkatv/powerlevel10k
 EOF
 
 ### --- Copy Scripts ---
-stow --dir=stow --target=~/ scripts
+stow --dir=stow --target="$HOME" scripts
 
 echo "[5/5] Stowing dotfiles for zsh"
-stow --dir=stow --target=~/ zshrc
+stow --dir=stow --target="$HOME" zshrc
 
 ### --- Fonts Reminder ---
 echo "💡 Make sure you install a Nerd Font (e.g. MesloLGS NF) in your terminal!"
@@ -45,4 +45,6 @@ fi
 ### --- First-Time Prompt Config ---
 echo "🚀 Zsh is ready! Start a new shell to finish setup."
 echo "⚡ On first run, you’ll see Powerlevel10k config. Choose 'Lean' for speed."
+echo "🔑 Run ./backup/restore_key.sh to restore your keys."
 echo "🔑 Run ./install_software.sh to install software."
+
