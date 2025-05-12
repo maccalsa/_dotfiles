@@ -6,4 +6,5 @@ set -e
 #
 
 echo "Installing fzf-git"
-git clone https://github.com/junegunn/fzf.git ~/.fzf
+
+git clone git@github.com:junegunn/fzf-git.sh.git ~/.fzf-git

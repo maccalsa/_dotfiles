@@ -78,7 +78,7 @@ if command -v fzf &> /dev/null; then
   # CTRL-G CTRL-L for reflogs
   # CTRL-G CTRL-W for Worktrees
   # CTRL-G CTRL-E for Each ref (git for-each-ref)
-  source ~/.fzf/fzf-git.sh
+  source ~/.fzf-git/fzf-git.sh
 
   # FZF preview customization
   export FZF_CTRL_T_OPTS="--preview 'if [ -d {} ]; then eza --tree --color=always {} | head -200; else bat -n --color=always --line-range :500 {}; fi'"

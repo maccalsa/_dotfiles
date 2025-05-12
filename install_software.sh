@@ -24,7 +24,13 @@
 echo "💡 Installing your tools"
 ./installers/install_tools.sh
 
-echo "💡 the next stage is to install the nix script found at ./nix/install_nix.sh"
+echo "💡 Installing nix"
+./nix/install_nix.sh
+
+echo "💡 Post installation configuration"
+./post_install_software.sh
+
+
 
 
 
