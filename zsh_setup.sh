@@ -45,4 +45,4 @@ fi
 ### --- First-Time Prompt Config ---
 echo "🚀 Zsh is ready! Start a new shell to finish setup."
 echo "⚡ On first run, you’ll see Powerlevel10k config. Choose 'Lean' for speed."
-echo "🔑 Run backup/restore_keys.sh to restore your dotfiles."
+echo "🔑 Run ./install_software.sh to install software."

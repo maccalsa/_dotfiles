@@ -18,6 +18,12 @@
 
 ./installers/install_docker.sh
 
+## Install neovim
+./installers/install_neovim.sh
+
+echo "💡 Installing your tools"
+./installers/install_tools.sh
+
 echo "💡 the next stage is to install the nix script found at ./nix/install_nix.sh"
 
 

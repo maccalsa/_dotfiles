@@ -20,8 +20,7 @@ stow --dir=stow --target=~/ alacritty
 
 echo "Initial terminal setup complete!"
 echo "You can now launch Alacritty and proceed to install Zsh & other configs."
-echo "1) Run backup/restore_key.sh to restore your dotfiles."
-echo "2) Run ./zsh_setup.sh to install Zsh and other configs."
+echo "1) Run ./zsh_setup.sh to install Zsh and other configs."
 
 
 
