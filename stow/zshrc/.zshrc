@@ -8,13 +8,18 @@ export ZSH="$HOME/.oh-my-zsh"
 export ZSH_DISABLE_COMPFIX="true"
 export EDITOR=nvim
 export BAT_THEME=tokyonight_night
-
-export GOPRIVATE=github.com/EndlessUpHill/coesus
+export GOPRIVATE="github.com/EndlessUpHill/coesus"
 export GIT_TERMINAL_PROMPT=0
 export PNPM_HOME="$HOME/.local/share/pnpm"
 export SDKMAN_DIR="$HOME/.sdkman"
 export NVM_DIR="$HOME/.nvm"
 export PYENV_ROOT="$HOME/.pyenv"
+
+### ─── PATH ─────────────────────────────────────────
+export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/go/bin:$PATH"
+export PATH="$PNPM_HOME:$PATH"
 
 ### ─── Antidote ────────────────────────────────────────────────────────────────
 source ~/.zsh/antidote/antidote.zsh
@@ -27,6 +32,12 @@ antidote load < ~/.zsh_plugins.txt
 autoload -Uz vcs_info
 precmd() { vcs_info }
 setopt prompt_subst
+
+### ─── Shell History ──────────────────────────────────────────────────────────
+HISTFILE=$HOME/.zhistory
+HISTSIZE=9999
+SAVEHIST=9999
+setopt share_history hist_expire_dups_first hist_ignore_dups hist_verify
 
 ### ─── Autocomplete ───────────────────────────────────────────────────────────
 autoload -Uz compinit && compinit
@@ -85,20 +96,10 @@ if command -v fzf &> /dev/null; then
   export FZF_ALT_C_OPTS="--preview 'eza --tree --color=always {} | head -200'"
 fi
 
-### ─── Shell History ──────────────────────────────────────────────────────────
-HISTFILE=$HOME/.zhistory
-HISTSIZE=9999
-SAVEHIST=9999
-setopt share_history hist_expire_dups_first hist_ignore_dups hist_verify
-
-### ─── Tool Initializers ─────────────────────────────
-[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && source "$NVM_DIR/bash_completion"
-[ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
 
 ### ─── Zoxide ─────────────────────────────────────────────────────────────────
 if command -v zoxide &> /dev/null; then
-  eval "$(zoxide init zsh)"
+  eval "$(zoxide init zsh --cmd cd)" 
 fi
 
 ### ─── TheFuck ─────────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ fi
 ### ─── Python ─────────────────────────────────────────────────────────────────
 if command -v pyenv &> /dev/null; then
   eval "$(pyenv init --path)"
-  eval "$(pyenv init -)"
+  eval "$(pyenv init -)" ## TODO: remove this
 fi
 
 ### ─── Node ───────────────────────────────────────────────────────────────────
@@ -143,6 +144,7 @@ fi
 
 ### ─── GPG + SSH Agent ─────────────────────────────────────────────────────────
 
+## Start the gpg agent and the ssh agent if they have not started, and add the gpg keys and ssh keys to the agents 
 if command -v gpg &> /dev/null; then
   export GPG_TTY=$(tty)
   [[ -f ~/.config/secrets-agent.sh ]] && source ~/.config/secrets-agent.sh
@@ -158,10 +160,13 @@ fi
 #   eval "$(docker-completion)"
 # fi
 
-### ─── Docker Compose ───────────────────────────────────────────────────────────
-if command -v docker-compose &> /dev/null; then
-   #   eval "$(docker-compose-completion)"
-   alias dc="docker-compose"
+### ─── Docker Compose ────────────────────
+if command -v docker &>/dev/null; then
+  fpath+=~/.zsh/completion
+  mkdir -p ~/.zsh/completion
+  docker compose completion zsh > ~/.zsh/completion/_docker-compose
+  compinit
+  alias dc='docker compose'
 fi
 
 ### ─── Navi ─────────────────────────────────────────────────────────────────────
@@ -178,9 +183,4 @@ fi
 ### ─── lazydocker ───────────────────────────────────────────────────────────────
 if command -v lazydocker &> /dev/null; then
   alias ld='lazydocker'
-fi
-
-### ─── zoxide ───────────────────────────────────────────────────────────────────
-if command -v zoxide &> /dev/null; then
-  alias cd='z'
 fi
