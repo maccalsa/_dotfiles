@@ -10,6 +10,8 @@ go install github.com/EndlessUphill/git-helper@latest
 echo "💡 Installing bashhub"
 go install github.com/maccalsa/bashhub@latest
 
+echo "💡 Installing summarize-project-md"
+npm install -g @maccalsa/summarize-project-md
 
 echo "💡 Installing DBeaver"
 sudo apt update
