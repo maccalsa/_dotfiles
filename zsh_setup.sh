@@ -6,6 +6,9 @@ echo "🔧 [1/5] Installing zsh and essentials..."
 sudo apt update
 sudo apt install -y zsh git curl
 
+## Install baseline missing fonts
+sudo apt install fonts-powerline
+
 echo "📁 [2/5] Creating zsh config folders..."
 ZSH_CUSTOM="${ZDOTDIR:-$HOME}/.zsh"
 mkdir -p "$ZSH_CUSTOM"

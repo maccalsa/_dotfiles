@@ -17,15 +17,17 @@ export PYENV_ROOT="$HOME/.pyenv"
 
 ### ─── PATH ─────────────────────────────────────────
 export PATH="$HOME/.local/bin:$PATH"
-export PATH="$HOME/.cargo/bin:$PATH"
+#export PATH="$HOME/.cargo/bin:$PATH"
 export PATH="$HOME/go/bin:$PATH"
-export PATH="$PNPM_HOME:$PATH"
+#export PATH="$PNPM_HOME:$PATH"
+#export PATH="$PYENV_ROOT:$PATH"
 
 ### ─── Antidote ────────────────────────────────────────────────────────────────
 source ~/.zsh/antidote/antidote.zsh
 antidote load < ~/.zsh_plugins.txt
 
 ### ─── Powerlevel10k prompt (if configured) ───────────────────────────────────
+export POWERLEVEL9K_MODE=nerdfont-complete
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
 
 ### ─── Git ─────────────────────────────────────────────────────────────────────
@@ -109,6 +111,9 @@ fi
 
 ### ─── Python ─────────────────────────────────────────────────────────────────
 if command -v pyenv &> /dev/null; then
+  export PYENV_ROOT="$HOME/.pyenv"
+  export PATH="$PYENV_ROOT/bin:$PATH"
+
   eval "$(pyenv init --path)"
   eval "$(pyenv init -)" ## TODO: remove this
 fi
@@ -128,6 +133,8 @@ fi
 
 ### ─── go ─────────────────────────────────────────────────────────────────────
 if command -v go &> /dev/null; then
+  export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
+
   export PATH="$PATH:$(go env GOPATH)/bin"
 fi
 
@@ -164,8 +171,8 @@ fi
 if command -v docker &>/dev/null; then
   fpath+=~/.zsh/completion
   mkdir -p ~/.zsh/completion
-  docker compose completion zsh > ~/.zsh/completion/_docker-compose
-  compinit
+  # docker-compose completion zsh > ~/.zsh/completion/_docker-compose
+  # compinit
   alias dc='docker compose'
 fi
 
@@ -184,3 +191,5 @@ fi
 if command -v lazydocker &> /dev/null; then
   alias ld='lazydocker'
 fi
+
+alias cursor='/opt/cursor.AppImage --no-sandbox'

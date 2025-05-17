@@ -1,4 +1,4 @@
-DEFAULT_GO_VERSION="1.22.2"
+DEFAULT_GO_VERSION="1.24.3"
 
 # What version of go? ask user if none supplied use GO_VERSION
 read -p "Enter the version of go you want to install (default: $DEFAULT_GO_VERSION): " GO_VERSION   

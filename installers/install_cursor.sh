@@ -6,10 +6,7 @@ set -e
 sudo apt update
 sudo apt install -y libfuse2 wget
 
-# Download the latest Cursor AppImage
-CURSOR_APPIMAGE_URL="https://downloader.cursor.sh/linux/appImage/x64"
 CURSOR_APPIMAGE_PATH="/opt/cursor.AppImage"
-sudo wget -O "$CURSOR_APPIMAGE_PATH" "$CURSOR_APPIMAGE_URL"
 
 # Make the AppImage executable
 sudo chmod +x "$CURSOR_APPIMAGE_PATH"

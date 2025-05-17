@@ -11,7 +11,7 @@ echo "[3/5] Installing tmux theme"
 git clone https://github.com/catppuccin/tmux ~/.tmux/plugins/tmux
 
 echo "[4/5] Stowing tmux config"
-stow --dir=../stow --target="$HOME" tmux
+stow --dir=./stow --target="$HOME" tmux
 
 # Install tmux plugins
 echo "[5/5] Installing tmux plugins"
