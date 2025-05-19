@@ -70,6 +70,7 @@ nix --extra-experimental-features 'nix-command flakes' profile install \
   nixpkgs#ctlptl \
   nixpkgs#navi \
   nixpkgs#glow \
+  nixpkgs#ripgrep \
 
 echo "✅ Done installing Nix tools."
 
