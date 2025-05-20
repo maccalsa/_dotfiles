@@ -1,34 +1,44 @@
+# "${BASH_SOURCE[0]}": This variable holds the path to the current script as it was invoked. It could be a relative or absolute path.
+# dirname "...": This command extracts the directory part of the path.
+# cd "...": This changes the directory to the script's directory.
+# &> /dev/null: This suppresses any output from the cd command.
+# pwd: This prints the present working directory (which is now the script's actual directory, resolved to an absolute path).
+# $(...): This is command substitution, capturing the output of the commands inside.
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+
 ### My Pass
 
-# ./installers/install_my_pass.sh
+ ${SCRIPT_DIR}/installers/install_my_pass.sh
 
 ### tmux 
 
-#./installers/install_tmux.sh
+${SCRIPT_DIR}/installers/install_tmux.sh
 
 ### Languages
 
-#./installers/install_languages.sh
+${SCRIPT_DIR}/installers/install_languages.sh
 
 ### fzf-git
 
-#./installers/install_fzf-git.sh
+${SCRIPT_DIR}/installers/install_fzf-git.sh
 
 ### install docker
 
-# ./installers/install_docker.sh
+${SCRIPT_DIR}/installers/install_docker.sh
 
 ## Install neovim
-# ./installers/install_neovim.sh
+
+${SCRIPT_DIR}/installers/install_neovim.sh
 
 echo "💡 Installing your tools"
-# ./installers/install_tools.sh
+${SCRIPT_DIR}/installers/install_tools.sh
 
 echo "💡 Installing nix"
-#./nix/install_nix.sh
+${SCRIPT_DIR}/nix/install_nix.sh
 
 echo "💡 Post installation configuration"
-./post_install_software.sh
+${SCRIPT_DIR}/post_install_software.sh
 
 
 
