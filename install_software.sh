@@ -9,9 +9,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 ### My Pass
 
- ${SCRIPT_DIR}/installers/install_my_pass.sh
+${SCRIPT_DIR}/installers/install_my_pass.sh
 
-### tmux 
+### tmux
 
 ${SCRIPT_DIR}/installers/install_tmux.sh
 

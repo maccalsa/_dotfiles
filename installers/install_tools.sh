@@ -13,11 +13,5 @@ go install github.com/maccalsa/bashhub@latest
 echo "💡 Installing summarize-project-md"
 npm install -g @maccalsa/summarize-project-md
 
-echo "💡 Installing DBeaver"
-sudo apt update
-sudo apt install -y dbeaver-ce
-
-echo "DBeaver installed. Launch via application menu."
-
 echo "💡 Tools installed successfully, try out git-helper with 'gh' and bashhub with 'bh'"
 

@@ -3,7 +3,7 @@
 echo "We will now go throug the steps to install languages"
 
 # Modify the prompts todefault to 'yes' if the user just presses Enter
-read -p "Do you want to install go? (Y/n): " GO_INSTALL
+read -p "Do you want to install go? (y/n): " GO_INSTALL
 GO_INSTALL=${GO_INSTALL:-y}
 
 # "${BASH_SOURCE[0]}": This variable holds the path to the current script as it was invoked. It could be a relative or absolute path.
