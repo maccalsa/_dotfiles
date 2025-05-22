@@ -1,10 +1,16 @@
 // Place your key bindings in this file to override the defaults
 [
-    {
-        "key": "ctrl+i",
-        "command": "composerMode.agent"
-    },
-     // Quickly toggle sidebar (Explorer)
+  {
+    "key": "ctrl+i",
+    "command": "composerMode.agent"
+  },
+  // make sure that goto resource works
+  {
+    "key": "ctrl+leftclick",
+    "command": "editor.action.goToDeclaration",
+    "when": "editorHasDefinitionProvider && editorTextFocus && !isInEmbeddedEditor"
+  },
+  // Quickly toggle sidebar (Explorer)
   {
     "key": "ctrl+e",
     "command": "workbench.action.toggleSidebarVisibility"
@@ -30,7 +36,7 @@
 
   // Create a new file
   {
-    "key": "ctrl+n", 
+    "key": "ctrl+n",
     "command": "extension.advancedNewFile"
   }
 ]

@@ -1,31 +1,32 @@
 {
-    "window.commandCenter": true,
-    "workbench.colorTheme": "Cursor Dark Midnight",
-    "git.openRepositoryInParentFolders": "never",
-    "editor.fontFamily": "'JetBrainsMono Nerd Font','Droid Sans Mono', 'monospace', monospace", // hides activity bar (left vertical bar)
-    "window.menuBarVisibility": "toggle", // hides menu bar unless you press Alt
-    "workbench.statusBar.visible": false, // hides bottom status bar
-    "editor.minimap.enabled": false, // disables minimap (right side bar in editor)
-    "breadcrumbs.enabled": false, // hides breadcrumbs at top of editor
-    "editor.tabCloseButton": "off", // removes close button from tabs
-    "editor.fontSize": 13, // smaller editor font to show more code
-    "workbench.editor.tabSizing": "shrink", // tabs shrink to smallest size
-    "editor.lineHeight": 1.2,
-    "workbench.activityBar.location": "hidden",
-    "zenMode.centerLayout": false,
-    "editor.wordWrap": "on",
-    "editor.wordWrapColumn": 120,
-    "advancedNewFile.exclude": {
-  "node_modules": true,
-  "node_modules_electron": true,
-  "dev": true,
-  "dist": true
-},
-"advancedNewFile.showInformationMessages": true,
-"advancedNewFile.convenienceOptions": [
-  "last",
-  "current",
-  "root"
-],
-"java.configuration.runtimes": []
-  }
+  "window.commandCenter": true,
+  "workbench.colorTheme": "Cursor Dark Midnight",
+  // "workbench.colorTheme": "Solarized Light",
+  "git.openRepositoryInParentFolders": "never",
+  "files.autoSave": "onFocusChange",
+  "editor.formatOnSave": true,
+  "redhat.telemetry.enabled": false,
+  "makefile.configureOnOpen": true,
+  "kotlin.compiler.jvm.target": "21",
+  "editor.fontFamily": "'MesloLGS Nerd Font Mono','JetBrainsMono Nerd Font','Droid Sans Mono', 'monospace', monospace", // hides activity bar (left vertical bar)
+  "window.menuBarVisibility": "toggle", // hides menu bar unless you press Alt
+  "workbench.statusBar.visible": false, // hides bottom status bar
+  "editor.minimap.enabled": false, // disables minimap (right side bar in editor)
+  "breadcrumbs.enabled": false, // hides breadcrumbs at top of editor
+  "editor.tabCloseButton": "off", // removes close button from tabs
+  "editor.fontSize": 13, // smaller editor font to show more code
+  "workbench.editor.tabSizing": "shrink", // tabs shrink to smallest size
+  "editor.lineHeight": 1.2,
+  "workbench.activityBar.location": "hidden",
+  "zenMode.centerLayout": false,
+  "editor.wordWrap": "on",
+  "editor.wordWrapColumn": 120,
+  "advancedNewFile.exclude": {
+    "node_modules": true,
+    "node_modules_electron": true,
+    "dev": true,
+    "dist": true
+  },
+  "advancedNewFile.showInformationMessages": true,
+  "advancedNewFile.convenienceOptions": ["last", "current", "root"]
+}
