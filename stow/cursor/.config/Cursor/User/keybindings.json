@@ -1,0 +1,36 @@
+// Place your key bindings in this file to override the defaults
+[
+    {
+        "key": "ctrl+i",
+        "command": "composerMode.agent"
+    },
+     // Quickly toggle sidebar (Explorer)
+  {
+    "key": "ctrl+e",
+    "command": "workbench.action.toggleSidebarVisibility"
+  },
+
+  // Quickly toggle bottom panel (Terminal, Problems, etc.)
+  {
+    "key": "ctrl+j",
+    "command": "workbench.action.togglePanel"
+  },
+
+  // Quickly toggle Zen mode
+  {
+    "key": "ctrl+k ctrl+z",
+    "command": "workbench.action.toggleZenMode"
+  },
+
+  // Quickly toggle AI chat panel (Cursor)
+  {
+    "key": "ctrl+alt+a",
+    "command": "cursor.chatView.focus"
+  },
+
+  // Create a new file
+  {
+    "key": "ctrl+n", 
+    "command": "extension.advancedNewFile"
+  }
+]
