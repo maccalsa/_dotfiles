@@ -118,3 +118,6 @@ command -v lazydocker &>/dev/null && alias ld='lazydocker'
 
 ### ─── Cursor ─────────────────────────────────────────────────────────────────
 alias cursor='/opt/cursor.AppImage --no-sandbox'
+
+### ---- Pay respects ----------------------------------------------------------
+eval "$(pay-respects bash)"

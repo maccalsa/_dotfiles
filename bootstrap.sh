@@ -23,6 +23,10 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 echo "[1/4] Installing dependencies (git, curl, stow, unzip, zsh)..."
 sudo apt install -y git stow curl wget zip unzip zsh
 
+## If runnong inside kvm, yuo'll need guest extensions
+## sudo apt install spice-vdagent qemu-guest-agent
+
+
 echo "[2/4] Installing Nerd Fonts (JetBrains & Meslo)..."
 ${SCRIPT_DIR}/fonts/install_fonts.sh
 

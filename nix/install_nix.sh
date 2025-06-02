@@ -53,7 +53,7 @@ nix --extra-experimental-features 'nix-command flakes' profile install \
   nixpkgs#fzf \
   nixpkgs#zoxide \
   nixpkgs#bat \
-  nixpkgs#thefuck \
+  nixpkgs#pay-respects \
   nixpkgs#lazydocker \
   nixpkgs#lazygit \
   nixpkgs#fd \
