@@ -1,0 +1,154 @@
+# ~/.config/espanso/match/base.yml or a custom file
+matches:
+  - trigger: ":jnewf"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_func.sh java"
+
+  - trigger: ":jnewo"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_obj.sh java"
+
+    # You can keep your filters if they are working correctly
+    filter_title: "\\.java"
+
+  - trigger: ":jexce"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_exception.sh java"
+
+  - trigger: ":jjson"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_json.sh java"
+
+  - trigger: ":jasync"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_async.sh java"
+
+  - trigger: ":jcli"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_cli.sh java"
+
+  - trigger: ":jtest"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_test.sh java"
+
+  - trigger: ":jmap"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_map.sh java"
+
+  - trigger: ":jlist"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_list.sh java"
+
+  - trigger: ":jdbconn"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_db_conn.sh java"
+
+  - trigger: ":jhttp"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_http_get.sh java"
+
+  - trigger: ":jif"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_if_else.sh java"
+
+  - trigger: ":jsw"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_switch_case.sh java"
+
+  - trigger: ":jrw"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_file_rw.sh java"
+
+  - trigger: ":jfor"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_for_loop.sh java"

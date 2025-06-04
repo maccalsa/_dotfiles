@@ -1,0 +1,155 @@
+# ~/.config/espanso/match/base.yml or a custom file
+matches:
+  - trigger: ":knewf"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_func.sh kotlin"
+
+  - trigger: ":knewo"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_obj.sh kotlin"
+
+    # You can keep your filters if they are working correctly
+    filter_title: "\\.kt|\\.kts"
+
+  - trigger: ":kexce"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_exception.sh kotlin"
+
+  - trigger: ":kjson"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_json.sh kotlin"
+
+  - trigger: ":kasync"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_async.sh kotlin"
+
+  - trigger: ":kcli"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_cli.sh kotlin"
+
+  - trigger: ":ktest"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_test.sh kotlin"
+
+  - trigger: ":kmap"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_map.sh kotlin"
+
+  - trigger: ":klist"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_list.sh kotlin"
+
+  - trigger: ":kdbconn"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_db_conn.sh kotlin"
+
+  - trigger: ":khttp"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_http_get.sh kotlin"
+
+  - trigger: ":kif"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_if_else.sh kotlin"
+
+  - trigger: ":ksw"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_switch_case.sh kotlin"
+
+  - trigger: ":krw"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_file_rw.sh kotlin"
+
+  - trigger: ":kfor"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_for_loop.sh kotlin"
+

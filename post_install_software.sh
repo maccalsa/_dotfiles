@@ -22,4 +22,8 @@ stow --dir=stow --target="$HOME" git
 echo "💡 Configuring bashhub"
 stow --dir=stow --target="$HOME" bashhub
 
+echo "💡 Configuring espanso"
+stow --dir=stow --target="$HOME" epsanso
+espanso service register
+expanso start
 
