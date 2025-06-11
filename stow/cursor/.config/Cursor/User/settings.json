@@ -10,7 +10,7 @@
   "kotlin.compiler.jvm.target": "21",
   "editor.fontFamily": "'MesloLGS Nerd Font Mono','JetBrainsMono Nerd Font','Droid Sans Mono', 'monospace', monospace", // hides activity bar (left vertical bar)
   "window.menuBarVisibility": "toggle", // hides menu bar unless you press Alt
-  "workbench.statusBar.visible": false, // hides bottom status bar
+  //  "workbench.statusBar.visible": false, // hides bottom status bar
   "editor.minimap.enabled": false, // disables minimap (right side bar in editor)
   "breadcrumbs.enabled": false, // hides breadcrumbs at top of editor
   "editor.tabCloseButton": "off", // removes close button from tabs
@@ -21,6 +21,7 @@
   "zenMode.centerLayout": false,
   "editor.wordWrap": "on",
   "editor.wordWrapColumn": 120,
+  "java.home": "/home/maccalsa/.sdkman/candidates/java/current",
   "advancedNewFile.exclude": {
     "node_modules": true,
     "node_modules_electron": true,
