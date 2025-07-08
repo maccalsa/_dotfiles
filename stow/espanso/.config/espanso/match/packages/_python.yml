@@ -1,0 +1,152 @@
+# ~/.config/espanso/match/base.yml or a custom file
+matches:
+  - trigger: ":pnewf"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_func.sh python"
+
+  - trigger: ":pnewo"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_obj.sh python"
+
+  - trigger: ":pexce"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_exception.sh python"
+
+  - trigger: ":pjson"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_json.sh python"
+
+  - trigger: ":pasync"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_async.sh python"
+
+  - trigger: ":pcli"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_cli.sh python"
+
+  - trigger: ":ptest"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_test.sh python"
+
+  - trigger: ":pmap"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_map.sh python"
+
+  - trigger: ":plist"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_list.sh python"
+
+  - trigger: ":pdbconn"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_db_conn.sh python"
+
+  - trigger: ":phttp"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_http_get.sh python"
+
+  - trigger: ":pif"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_if_else.sh python"
+
+  - trigger: ":psw"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_switch_case.sh python"
+
+  - trigger: ":prw"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_file_rw.sh python"
+
+  - trigger: ":pfor"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_for_loop.sh python"
+

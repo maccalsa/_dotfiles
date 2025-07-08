@@ -1,0 +1,11 @@
+filter_class: jetbrains-idea|Cursor|nvim-qt|Alacritty
+backend: clipboard
+
+extra_includes:
+  - "../match/packages/_java.yml"
+  - "../match/packages/_kotlin.yml"
+  - "../match/packages/_python.yml"
+  - "../match/packages/_typescript.yml"
+  - "../match/packages/_golang.yml"
+  - "../match/packages/_sql.yml"
+

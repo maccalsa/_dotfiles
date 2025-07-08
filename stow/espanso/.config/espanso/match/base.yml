@@ -1,0 +1,160 @@
+# espanso match file
+
+# For a complete introduction, visit the official docs at: https://espanso.org/docs/
+
+# You can use this file to define the base matches (aka snippets)
+# that will be available in every application when using espanso.
+
+# Matches are substitution rules: when you type the "trigger" string
+# it gets replaced by the "replace" string.
+
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  # Simple text replacement
+  - trigger: ":espanso"
+    replace: "Hi there!"
+
+  # NOTE: espanso uses YAML to define matches, so pay attention to the indentation!
+
+  # But matches can also be dynamic:
+
+  # Print the current date
+  - trigger: ":date"
+    replace: "{{mydate}}"
+    vars:
+      - name: mydate
+        type: date
+        params:
+          format: "%m/%d/%Y"
+
+  # Print the output of a shell command
+  - trigger: ":shell"
+    replace: "{{output}}"
+    vars:
+      - name: output
+        type: shell
+        params:
+          cmd: "echo 'Hello from your shell'"
+
+  - trigger: ":gst"
+    replace: "git status"
+
+  - trigger: ":gpom"
+    replace: "git push origin main"
+
+  - trigger: ":gpl"
+    replace: "git pull origin main"
+
+  - trigger: ":grl"
+    replace: "git rebase origin main"
+
+  - trigger: "gat"
+    replace: "git"
+
+  - trigger: ":lsof"
+    replace: "lsof -i :"
+
+  - trigger: ":fgr"
+    replace: "find . -name '$|$' | xargs grep '$|$'"
+
+  - trigger: ":gmi"
+    replace: "go mod init {{module}}"
+    vars:
+      - name: module
+        type: form
+        params:
+          prompt: "Module name"
+
+  - trigger: ":gg"
+    replace: "go get {{module}}"
+    vars:
+      - name: module
+        type: form
+        params:
+          prompt: "Module path"
+
+  - trigger: ":gmt"
+    replace: "go mod tidy"
+
+  - trigger: ":nixi"
+    replace: "nix --extra-experimental-features 'nix-command flakes' profile install {{pkg}}"
+    vars:
+      - name: pkg
+        type: form
+        params:
+          prompt: "Package"
+
+  ### Docker Commands:
+
+  - trigger: ":dcb"
+    replace: "docker-compose build"
+
+  - trigger: ":dcu"
+    replace: "docker-compose up -d"
+
+  - trigger: ":dcd"
+    replace: "docker-compose down"
+
+  - trigger: ":dci"
+    replace: "docker image ls"
+
+  - trigger: ":dcc"
+    replace: "docker container ls"
+
+  ### IDE Code Templates:
+
+  #### Kotlin:
+
+  - trigger: ":kif"
+    replace: "interface {{Name}} { fun {{fn}}() }"
+
+  - trigger: ":kdat"
+    replace: "data class {{Cls}}(val {{prop}}: {{Type}})"
+
+  - trigger: ":kcls"
+    replace: "class {{Cls}} : {{Sup}}() { }"
+
+  - trigger: ":kit"
+    replace: "{{lst}}.forEach { println(it) }"
+
+  - trigger: ":kfn"
+    replace: "fun {{fn}}({{p}}): {{R}} { }"
+
+  - trigger: ":klt"
+    replace: "{{v}}?.let { }"
+
+  #### Go:
+
+  #### TypeScript:
+
+  - trigger: ":tsf"
+    replace: "function {{fn}}({{p}}): {{R}} { }"
+
+  - trigger: ":tsl"
+    replace: "{{lst}}.forEach(i => console.log(i));"
+
+  - trigger: ":tsm"
+    replace: "{{map}}.forEach((v, k) => console.log(k, v));"
+
+  #### Shell (`sh`):
+
+  - trigger: ":shb"
+    replace: "#!/usr/bin/env bash"
+
+  - trigger: ":sha"
+    replace: "{{arr}}=(val1 val2 val3)"
+
+  - trigger: ":shl"
+    replace: 'for i in "${{arr}}[@]"; do echo "$i"; done'
+
+  - trigger: ":shsw"
+    replace: "case ${{var}} in pattern) ;; *) ;; esac"
+
+  - trigger: ":shni"
+    replace: "if [[ ! {{c}} ]]; then fi"
+
+  - trigger: ":shi"
+    replace: "if [[ {{c}} ]]; then fi"
+
+  # And much more! For more information, visit the docs: https://espanso.org/docs/

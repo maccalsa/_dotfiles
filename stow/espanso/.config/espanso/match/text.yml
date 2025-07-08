@@ -1,0 +1,30 @@
+matches:
+  - trigger: "teh"
+    replace: "the"
+
+  - trigger: "adn"
+    replace: "and"
+
+  - trigger: "fro"
+    replace: "for"
+
+  - trigger: "foe"
+    replace: "for"
+
+  - trigger: "hte"
+    replace: "the"
+
+  - trigger: "int"
+    replace: "in"
+
+  - trigger: "nad"
+    replace: "and"
+
+  - trigger: "wit"
+    replace: "with"
+
+  - trigger: "tht"
+    replace: "that"
+
+  - trigger: "tis"
+    replace: "its"

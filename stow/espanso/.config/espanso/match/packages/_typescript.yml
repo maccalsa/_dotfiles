@@ -1,0 +1,152 @@
+# ~/.config/espanso/match/base.yml or a custom file
+matches:
+  - trigger: ":tnewf"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_func.sh typescript"
+
+  - trigger: ":tnewo"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_obj.sh typescript"
+
+  - trigger: ":texce"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_exception.sh typescript"
+
+  - trigger: ":tjson"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_json.sh typescript"
+
+  - trigger: ":tasync"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_async.sh typescript"
+
+  - trigger: ":tcli"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_cli.sh typescript"
+
+  - trigger: ":ttest"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_test.sh typescript"
+
+  - trigger: ":tmap"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_map.sh typescript"
+
+  - trigger: ":tlist"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_list.sh typescript"
+
+  - trigger: ":tdbconn"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_db_conn.sh typescript"
+
+  - trigger: ":thttp"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_http_get.sh typescript"
+
+  - trigger: ":tif"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_if_else.sh typescript"
+
+  - trigger: ":tsw"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_switch_case.sh typescript"
+
+  - trigger: ":trw"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_file_rw.sh typescript"
+
+  - trigger: ":tfor"
+    replace: "{{output}}" # Espanso will replace the trigger with the value of the 'output' variable
+    vars:
+      - name: output
+        type: shell
+        params:
+          # Call your main script that handles the entire form and output generation
+          # !! MAKE SURE THIS IS THE ABSOLUTE PATH TO YOUR NEW SCRIPT !!
+          cmd: "~/.config/espanso/scripts/generate_for_loop.sh typescript"
+

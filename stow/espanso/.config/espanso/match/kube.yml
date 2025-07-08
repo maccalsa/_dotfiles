@@ -1,0 +1,24 @@
+matches:
+  - trigger: ":kgetpods"
+    replace: "kubectl get pods --namespace=$|$"
+
+  - trigger: ":kdelpod"
+    replace: "kubectl delete pod $|$ --grace-period=0 --force --namespace="
+
+  - trigger: ":kdesc"
+    replace: "kubectl describe pod $|$ --namespace="
+
+  - trigger: ":klogs"
+    replace: "kubectl logs -f $|$ --namespace="
+
+  - trigger: ":kportfwd"
+    replace: "kubectl port-forward svc/$|$ 8080:80 --namespace="
+
+  - trigger: ":kctx"
+    replace: "kubectl config use-context $|$"
+
+  - trigger: ":krollout"
+    replace: "kubectl rollout restart deployment/$|$ --namespace="
+
+  - trigger: ":kgetsvc"
+    replace: "kubectl get svc --namespace=$|$"

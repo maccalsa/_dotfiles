@@ -1,0 +1,24 @@
+matches:
+  - trigger: ":drmall"
+    replace: "docker stop $(docker ps -aq) && docker rm $(docker ps -aq)"
+
+  - trigger: ":dcleanimg"
+    replace: "docker image prune -f"
+
+  - trigger: ":dcleancont"
+    replace: "docker container prune -f"
+
+  - trigger: ":dcleansys"
+    replace: "docker system prune -af"
+
+  - trigger: ":drun"
+    replace: "docker run -it --rm $|$ bash"
+
+  - trigger: ":dbuild"
+    replace: "docker build -t $|$ ."
+
+  - trigger: ":dps"
+    replace: "docker ps -a"
+
+  - trigger: ":dvolprune"
+    replace: "docker volume prune -f"
