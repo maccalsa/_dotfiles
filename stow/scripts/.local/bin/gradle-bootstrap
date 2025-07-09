@@ -1,0 +1,779 @@
+#!/usr/bin/env bash
+
+# Gradle Project Bootstrap Wizard
+# Creates Spring Boot apps, libraries, and multi-module projects
+# Supports Java 21 and Kotlin 2.0.0
+
+set -euo pipefail
+
+# --------------------
+# Configuration Constants
+# --------------------
+
+readonly SCRIPT_VERSION="1.0.0"
+readonly DEFAULT_KOTLIN_VERSION="2.0.0"
+readonly DEFAULT_SPRING_BOOT_VERSION="3.5.0"
+readonly DEFAULT_SPRING_DEPENDENCY_MANAGEMENT_VERSION="1.1.4"
+readonly DEFAULT_JAVA_VERSION="21"
+readonly DEFAULT_LANGUAGE="kotlin"
+readonly DEFAULT_BUILD_TYPE="kotlin-dsl"
+readonly DEFAULT_PACKAGE_PREFIX="com.example"
+readonly SPRING_STARTER_URL="https://start.spring.io/starter.zip"
+readonly GITIGNORE_URL="https://raw.githubusercontent.com/github/gitignore/main/Java.gitignore"
+
+# Spring Boot starters mapping
+declare -A SPRING_STARTERS=(
+  [1]="webflux"
+  [2]="data-r2dbc"
+  [3]="postgresql"
+  [4]="data-jpa"
+  [5]="security"
+  [6]="validation"
+  [7]="configuration-processor"
+  [8]="actuator"
+  [9]="lombok"
+  [10]="devtools"
+)
+
+declare -A SPRING_STARTER_NAMES=(
+  [1]="Spring WebFlux"
+  [2]="Spring Data R2DBC"
+  [3]="R2DBC PostgreSQL"
+  [4]="Spring Data JPA"
+  [5]="Spring Security"
+  [6]="Validation"
+  [7]="Configuration Processor"
+  [8]="Actuator"
+  [9]="Lombok"
+  [10]="DevTools"
+)
+
+# --------------------
+# Utility Functions
+# --------------------
+
+log_info() {
+  echo "ℹ️  $1"
+}
+
+log_success() {
+  echo "✅ $1"
+}
+
+log_error() {
+  echo "❌ $1" >&2
+}
+
+log_warning() {
+  echo "⚠️  $1"
+}
+
+validate_project_name() {
+  local name="$1"
+  # Check for valid project name (alphanumeric, hyphens, underscores only)
+  if [[ ! "$name" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+    log_error "Invalid project name: '$name'. Use only letters, numbers, hyphens, and underscores. Must start with a letter."
+    return 1
+  fi
+  return 0
+}
+
+validate_package_name() {
+  local package="$1"
+  # Check for valid Java package name
+  if [[ ! "$package" =~ ^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$ ]]; then
+    log_error "Invalid package name: '$package'. Use lowercase letters, numbers, and dots. Must start with a letter."
+    return 1
+  fi
+  return 0
+}
+
+sanitize_input() {
+  local input="$1"
+  # Remove potentially dangerous characters
+  echo "$input" | tr -d ';|&`$()<>{}[]\\"'"'"
+}
+
+ensure_required_tools() {
+  local missing_tools=()
+  
+  for tool in curl unzip git gradle; do
+    if ! command -v "$tool" &> /dev/null; then
+      missing_tools+=("$tool")
+    fi
+  done
+  
+  if [[ ${#missing_tools[@]} -gt 0 ]]; then
+    log_error "Missing required tools: ${missing_tools[*]}"
+    log_info "Please install the missing tools and try again."
+    exit 1
+  fi
+}
+
+create_safe_directory() {
+  local dir="$1"
+  if [[ -e "$dir" ]]; then
+    log_warning "Directory '$dir' already exists"
+    read -rp "Overwrite? [y/N]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+      log_info "Operation cancelled"
+      exit 0
+    fi
+    rm -rf "$dir"
+  fi
+  mkdir -p "$dir"
+}
+
+# --------------------
+# User Interface Functions
+# --------------------
+
+print_welcome() {
+  echo "======================================"
+  echo "   ⚙️  Gradle Project Bootstrap Wizard"
+  echo "   Version: $SCRIPT_VERSION"
+  echo "======================================"
+  echo "Supports: Java $DEFAULT_JAVA_VERSION, Kotlin $DEFAULT_KOTLIN_VERSION"
+  echo "Spring Boot: $DEFAULT_SPRING_BOOT_VERSION"
+  echo ""
+}
+
+ask_project_type() {
+  echo "What type of project would you like to create?"
+  echo "  1. Runnable Spring App"
+  echo "  2. Kotlin/Java Library"
+  echo "  3. Multi-module Gradle App"
+  
+  while true; do
+    read -rp "Select an option [1]: " choice
+    choice="${choice:-1}"
+    
+    case "$choice" in
+      1) PROJECT_TYPE="spring-app"; break ;;
+      2) PROJECT_TYPE="library"; break ;;
+      3) PROJECT_TYPE="multi-module"; break ;;
+      *) log_error "Invalid option. Please select 1, 2, or 3." ;;
+    esac
+  done
+  
+  log_success "Selected project type: $PROJECT_TYPE"
+}
+
+get_project_name() {
+  local prompt="$1"
+  local project_name
+  
+  while true; do
+    read -rp "$prompt: " project_name
+    project_name=$(sanitize_input "$project_name")
+    
+    if [[ -z "$project_name" ]]; then
+      log_error "Project name cannot be empty"
+      continue
+    fi
+    
+    if validate_project_name "$project_name"; then
+      break
+    fi
+  done
+  
+  echo "$project_name"
+}
+
+get_package_name() {
+  local default_package="$1"
+  local package_name
+  
+  while true; do
+    read -rp "Base package [$default_package]: " package_name
+    package_name="${package_name:-$default_package}"
+    package_name=$(sanitize_input "$package_name")
+    
+    if validate_package_name "$package_name"; then
+      break
+    fi
+  done
+  
+  echo "$package_name"
+}
+
+get_language_choice() {
+  local default_lang="$1"
+  local language
+  
+  read -rp "Language (kotlin/java) [$default_lang]: " language
+  language="${language:-$default_lang}"
+  language=$(echo "$language" | tr '[:upper:]' '[:lower:]')
+  
+  case "$language" in
+    kotlin|java) echo "$language" ;;
+    *) log_warning "Invalid language '$language', using '$default_lang'"; echo "$default_lang" ;;
+  esac
+}
+
+get_spring_dependencies() {
+  echo "Select Spring dependencies (comma-separated numbers, e.g. 1,2,5):"
+  # Iterate through the array in numerical order
+  for i in {1..10}; do
+    if [[ -n "${SPRING_STARTERS[$i]}" ]]; then
+      printf "%2d. %s\n" "$i" "${SPRING_STARTER_NAMES[$i]}"
+    fi
+  done
+  
+  read -rp "Selection [1]: " selection
+  selection="${selection:-1}"
+  
+  local dependencies=""
+  IFS=',' read -ra choices <<< "$selection"
+  for choice in "${choices[@]}"; do
+    local dep="${SPRING_STARTERS[${choice// /}]}"
+    if [[ -n "$dep" ]]; then
+      dependencies+="${dep},"
+    fi
+  done
+  
+  # Add custom dependencies
+  read -rp "Any custom dependencies (comma-separated, or ENTER to skip): " custom_deps
+  if [[ -n "$custom_deps" ]]; then
+    dependencies+="${custom_deps// /},"
+  fi
+  
+  echo "${dependencies%,}"  # trim trailing comma
+}
+
+get_spring_dependencies_for_module() {
+  # Display the options
+  echo "  📚 Spring dependencies (comma-separated numbers):" >&2
+  # Iterate through the array in numerical order
+  for i in {1..10}; do
+    if [[ -n "${SPRING_STARTERS[$i]}" ]]; then
+      printf "    %2d. %s\n" "$i" "${SPRING_STARTER_NAMES[$i]}" >&2
+    fi
+  done
+  
+  read -rp "    Your selection [1]: " selection >&2
+  selection="${selection:-1}"
+  
+  local dependencies=""
+  IFS=',' read -ra choices <<< "$selection"
+  for choice in "${choices[@]}"; do
+    local dep="${SPRING_STARTERS[${choice// /}]}"
+    if [[ -n "$dep" ]]; then
+      dependencies+="${dep},"
+    fi
+  done
+  
+  # Add custom dependencies
+  read -rp "    Any custom deps (comma-separated)? " custom_deps >&2
+  if [[ -n "$custom_deps" ]]; then
+    dependencies+="${custom_deps// /},"
+  fi
+  
+  echo "${dependencies%,}"  # trim trailing comma
+}
+
+confirm_project_creation() {
+  local project_name="$1"
+  local language="$2"
+  local build_type="$3"
+  local spring_boot_version="$4"
+  local package_name="$5"
+  local dependencies="$6"
+  
+  echo ""
+  echo "======================================"
+  echo "         Project Summary"
+  echo "======================================"
+  echo "Project Name:  $project_name"
+  echo "Language:      $language"
+  echo "Build Tool:    $build_type"
+  if [[ -n "$spring_boot_version" ]]; then
+    echo "Spring Boot:   $spring_boot_version"
+  fi
+  echo "Package:       $package_name"
+  if [[ -n "$dependencies" ]]; then
+    echo "Dependencies:  $dependencies"
+  fi
+  echo "======================================"
+  echo ""
+  
+  read -rp "Proceed? [y/N]: " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    log_info "Operation cancelled"
+    exit 0
+  fi
+}
+
+# --------------------
+# Project Creation Functions
+# --------------------
+
+download_spring_project() {
+  local project_name="$1"
+  local language="$2"
+  local gradle_type="$3"
+  local spring_boot_version="$4"
+  local package_name="$5"
+  local dependencies="$6"
+  
+  log_info "Downloading Spring project..."
+  
+  local temp_zip="${project_name}.zip"
+  
+  if ! curl -s -f "$SPRING_STARTER_URL" \
+    -d "language=$language" \
+    -d "dependencies=$dependencies" \
+    -d "type=$gradle_type" \
+    -d "bootVersion=$spring_boot_version" \
+    -d "baseDir=$project_name" \
+    -d "packageName=$package_name" \
+    -d "kotlinVersion=$DEFAULT_KOTLIN_VERSION" \
+    -d "javaVersion=$DEFAULT_JAVA_VERSION" \
+    -o "$temp_zip"; then
+    log_error "Failed to download project from Spring Initializr"
+    rm -f "$temp_zip"
+    exit 1
+  fi
+  
+  # Validate ZIP file
+  if ! unzip -tq "$temp_zip" >/dev/null 2>&1; then
+    log_error "Downloaded file is not a valid ZIP archive"
+    log_info "Response content:"
+    cat "$temp_zip"
+    rm -f "$temp_zip"
+    exit 1
+  fi
+  
+  log_info "Extracting project..."
+  unzip -q "$temp_zip"
+  rm "$temp_zip"
+  
+  cd "$project_name" || {
+    log_error "Failed to change to project directory"
+    exit 1
+  }
+  
+  log_success "Spring Boot project created: $project_name"
+  echo "To run:  ./gradlew bootRun"
+}
+
+create_gradle_library() {
+  local project_name="$1"
+  local language="$2"
+  local package_name="$3"
+  local package_dir
+  
+  package_dir=$(echo "$package_name" | tr '.' '/')
+  
+  create_safe_directory "$project_name"
+  cd "$project_name"
+  
+  # Create settings.gradle.kts
+  cat > settings.gradle.kts <<EOF
+rootProject.name = "$project_name"
+EOF
+  
+  # Create build.gradle.kts
+  if [[ "$language" == "kotlin" ]]; then
+    cat > build.gradle.kts <<EOF
+plugins {
+    kotlin("jvm") version "$DEFAULT_KOTLIN_VERSION"
+}
+
+group = "$package_name"
+version = "1.0.0"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation(kotlin("test"))
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+EOF
+  else
+    cat > build.gradle.kts <<EOF
+plugins {
+    java
+}
+
+group = "$package_name"
+version = "1.0.0"
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_$DEFAULT_JAVA_VERSION
+    targetCompatibility = JavaVersion.VERSION_$DEFAULT_JAVA_VERSION
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+EOF
+  fi
+  
+  # Create source directories
+  mkdir -p "src/main/$language/$package_dir"
+  mkdir -p "src/test/$language/$package_dir"
+  
+  # Create sample source files
+  if [[ "$language" == "kotlin" ]]; then
+    cat > "src/main/kotlin/$package_dir/HelloWorld.kt" <<EOF
+package $package_name
+
+fun hello(): String = "Hello from $project_name!"
+EOF
+    
+    cat > "src/test/kotlin/$package_dir/HelloWorldTest.kt" <<EOF
+package $package_name
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class HelloWorldTest {
+    @Test
+    fun \`test hello\`() {
+        assertEquals("Hello from $project_name!", hello())
+    }
+}
+EOF
+  else
+    cat > "src/main/java/$package_dir/HelloWorld.java" <<EOF
+package $package_name;
+
+public class HelloWorld {
+    public static String hello() {
+        return "Hello from $project_name!";
+    }
+}
+EOF
+    
+    cat > "src/test/java/$package_dir/HelloWorldTest.java" <<EOF
+package $package_name;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public class HelloWorldTest {
+    @Test
+    void testHello() {
+        assertEquals("Hello from $project_name!", HelloWorld.hello());
+    }
+}
+EOF
+  fi
+  
+  # Generate Gradle wrapper
+  log_info "Generating Gradle wrapper..."
+  gradle wrapper --no-daemon --quiet
+  
+  # Download .gitignore
+  log_info "Fetching .gitignore..."
+  curl -sSfL "$GITIGNORE_URL" -o .gitignore
+  
+  # Initialize Git repository
+  log_info "Initializing Git repository..."
+  git init -q
+  git add .
+  git commit -m "Initial commit: Gradle library with $language" -q
+  
+  log_success "Gradle library '$project_name' created successfully"
+  echo "To build: ./gradlew build"
+}
+
+setup_spring_app() {
+  local project_name
+  local language
+  local build_type_choice
+  local gradle_type
+  local dependencies
+  local spring_boot_version
+  local package_name
+  
+  project_name=$(get_project_name "📦 Project name")
+  language=$(get_language_choice "$DEFAULT_LANGUAGE")
+  
+  echo "📐 Gradle build type:"
+  echo "  1. Kotlin DSL (.kts) [default]"
+  echo "  2. Groovy (.gradle)"
+  
+  read -rp "Select build type [1]: " build_type_choice
+  build_type_choice="${build_type_choice:-1}"
+  gradle_type=$([[ "$build_type_choice" == "2" ]] && echo "gradle-project" || echo "gradle-project-kotlin")
+  
+  dependencies=$(get_spring_dependencies)
+  
+  read -rp "Spring Boot version [$DEFAULT_SPRING_BOOT_VERSION]: " spring_boot_version
+  spring_boot_version="${spring_boot_version:-$DEFAULT_SPRING_BOOT_VERSION}"
+  
+  local default_package="$DEFAULT_PACKAGE_PREFIX.${project_name// /}"
+  package_name=$(get_package_name "$default_package")
+  
+  confirm_project_creation "$project_name" "$language" "$gradle_type" "$spring_boot_version" "$package_name" "$dependencies"
+  
+  download_spring_project "$project_name" "$language" "$gradle_type" "$spring_boot_version" "$package_name" "$dependencies"
+}
+
+setup_library() {
+  local project_name
+  local language
+  local package_name
+  
+  project_name=$(get_project_name "📦 Library name")
+  language=$(get_language_choice "$DEFAULT_LANGUAGE")
+  
+  local default_package="$DEFAULT_PACKAGE_PREFIX.${project_name// /}"
+  package_name=$(get_package_name "$default_package")
+  
+  confirm_project_creation "$project_name" "$language" "Gradle" "" "$package_name" ""
+  
+  create_gradle_library "$project_name" "$language" "$package_name"
+}
+
+create_multi_module_project() {
+  local project_name
+  local root_dir
+  local modules_dir
+  
+  project_name=$(get_project_name "📦 Root project name")
+  root_dir="$project_name"
+  modules_dir="$root_dir/modules"
+  
+  create_safe_directory "$root_dir"
+  cd "$root_dir"
+  
+  # Create root settings.gradle.kts
+  cat > settings.gradle.kts <<EOF
+rootProject.name = "$project_name"
+EOF
+  
+  # Collect module information
+  local -a module_names=()
+  local -A module_types=()
+  local -A module_deps=()
+  local -A module_packages=()
+  
+  while true; do
+    echo ""
+    read -rp "➕ Add a module? [y/N]: " add_module
+    if [[ ! "$add_module" =~ ^[Yy]$ ]]; then
+      break
+    fi
+    
+    local mod_name
+    while true; do
+      read -rp "  📛 Module name: " mod_name
+      mod_name=$(sanitize_input "$mod_name")
+      if [[ -z "$mod_name" ]]; then
+        log_error "Module name cannot be empty"
+        continue
+      fi
+      if validate_project_name "$mod_name"; then
+        break
+      fi
+    done
+    
+    echo "  🧩 Module type:"
+    echo "    1. Library"
+    echo "    2. Spring Library"
+    echo "    3. Spring App"
+    
+    local mod_type
+    read -rp "    Choose [1]: " mod_type
+    mod_type="${mod_type:-1}"
+    
+    local type
+    case "$mod_type" in
+      1) type="library" ;;
+      2) type="spring-library" ;;
+      3) type="spring-app" ;;
+      *) log_error "Invalid option"; continue ;;
+    esac
+    
+    local package_name="$DEFAULT_PACKAGE_PREFIX.$mod_name"
+    read -rp "  📦 Package name [$package_name]: " package_name_input
+    package_name="${package_name_input:-$package_name}"
+    package_name=$(sanitize_input "$package_name")
+    
+    if ! validate_package_name "$package_name"; then
+      continue
+    fi
+    
+    module_names+=("$mod_name")
+    module_types["$mod_name"]="$type"
+    module_packages["$mod_name"]="$package_name"
+    
+    if [[ "$type" == "spring-library" || "$type" == "spring-app" ]]; then
+      # Call the function and capture the result while displaying the output
+      local mod_deps=$(get_spring_dependencies_for_module)
+      module_deps["$mod_name"]="$mod_deps"
+    fi
+  done
+  
+  # Create modules
+  if [[ ${#module_names[@]} -eq 0 ]]; then
+    log_warning "No modules specified. Creating a basic multi-module structure."
+    module_names=("core" "api")
+    module_types["core"]="library"
+    module_types["api"]="spring-app"
+    module_packages["core"]="$DEFAULT_PACKAGE_PREFIX.core"
+    module_packages["api"]="$DEFAULT_PACKAGE_PREFIX.api"
+    module_deps["api"]="web"
+  fi
+  
+  log_info "Generating modules..."
+  mkdir -p "$modules_dir"
+  
+  for mod in "${module_names[@]}"; do
+    local type="${module_types[$mod]}"
+    local package="${module_packages[$mod]}"
+    local package_dir=$(echo "$package" | tr '.' '/')
+    local mod_path="$modules_dir/$mod"
+    
+    mkdir -p "$mod_path"
+    mkdir -p "$mod_path/src/main/kotlin/$package_dir"
+    mkdir -p "$mod_path/src/test/kotlin/$package_dir"
+    
+    if [[ "$type" == "library" ]]; then
+      cat > "$mod_path/build.gradle.kts" <<EOF
+plugins {
+    kotlin("jvm") version "$DEFAULT_KOTLIN_VERSION"
+}
+
+group = "$package"
+version = "1.0.0"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation(kotlin("test"))
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+EOF
+      
+      echo "package $package\n\nfun hello(): String = \"Hello from $mod\"" > "$mod_path/src/main/kotlin/$package_dir/Hello.kt"
+    else
+      local boot_deps="${module_deps[$mod]}"
+      cat > "$mod_path/build.gradle.kts" <<EOF
+plugins {
+    id("org.springframework.boot") version "$DEFAULT_SPRING_BOOT_VERSION"
+    id("io.spring.dependency-management") version "$DEFAULT_SPRING_DEPENDENCY_MANAGEMENT_VERSION"
+    kotlin("jvm") version "$DEFAULT_KOTLIN_VERSION"
+    kotlin("plugin.spring") version "$DEFAULT_KOTLIN_VERSION"
+}
+
+group = "$package"
+version = "1.0.0"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+$(for dep in ${boot_deps//,/ }; do echo "    implementation(\"org.springframework.boot:spring-boot-starter-$dep\")"; done)
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+EOF
+      
+      if [[ "$type" == "spring-app" ]]; then
+        local app_class="${mod^}App"
+        cat > "$mod_path/src/main/kotlin/$package_dir/${app_class}.kt" <<EOF
+package $package
+
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.runApplication
+
+@SpringBootApplication
+class $app_class
+
+fun main(args: Array<String>) = runApplication<$app_class>(*args)
+EOF
+      else
+        echo "package $package\n\nfun lib(): String = \"Hello from $mod\"" > "$mod_path/src/main/kotlin/$package_dir/Hello.kt"
+      fi
+    fi
+    
+    echo "include(\":modules:$mod\")" >> settings.gradle.kts
+  done
+  
+  # Create root build.gradle.kts
+  cat > build.gradle.kts <<EOF
+plugins {
+    kotlin("jvm") version "$DEFAULT_KOTLIN_VERSION" apply false
+    id("org.springframework.boot") version "$DEFAULT_SPRING_BOOT_VERSION" apply false
+    id("io.spring.dependency-management") version "$DEFAULT_SPRING_DEPENDENCY_MANAGEMENT_VERSION" apply false
+}
+
+allprojects {
+    group = "$DEFAULT_PACKAGE_PREFIX"
+    version = "1.0.0"
+    
+    repositories {
+        mavenCentral()
+    }
+}
+EOF
+  
+  # Download .gitignore
+  log_info "Fetching .gitignore..."
+  curl -sSfL "$GITIGNORE_URL" -o .gitignore
+  
+  # Initialize Git repository
+  log_info "Initializing Git repository..."
+  git init -q
+  git add .
+  git commit -m "Initial commit: multi-module Gradle project" -q
+  
+  log_success "Multi-module project created in '$root_dir'"
+  echo "To explore: cd $root_dir"
+}
+
+setup_multi_module_app() {
+  create_multi_module_project
+}
+
+# --------------------
+# Main Function
+# --------------------
+
+main() {
+  # Check for required tools
+  ensure_required_tools
+  
+  # Print welcome message
+  print_welcome
+  
+  # Get project type
+  ask_project_type
+  
+  # Create project based on type
+  case "$PROJECT_TYPE" in
+    "spring-app") setup_spring_app ;;
+    "library") setup_library ;;
+    "multi-module") setup_multi_module_app ;;
+    *) log_error "Unknown project type: $PROJECT_TYPE"; exit 1 ;;
+  esac
+}
+
+# Run main function with all arguments
+main "$@"
