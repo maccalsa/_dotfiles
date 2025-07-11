@@ -21,7 +21,7 @@ print_error() {
 }
 
 print_info() {
-  echo -e "${YELLOW}ℹ️  $1${NC}"
+  echo -e "${YELLOW}ℹ️  $1${NC}" >&2
 }
 
 # Configuration
@@ -99,10 +99,15 @@ build_dependency_lines() {
   local dep_count=0
   local total_deps=$(echo "$extra_deps" | wc -w)
   
+  echo "[DEBUG] build_dependency_lines called with: '$extra_deps'" >&2
+  echo "[DEBUG] total_deps: $total_deps" >&2
+  
   for dep in $extra_deps; do
     ((dep_count++))
+    echo "[DEBUG] Processing dep: '$dep' (count: $dep_count)" >&2
     case $dep in
       :oban) 
+        echo "[DEBUG] Found oban dependency" >&2
         if [ $dep_count -eq $total_deps ]; then
           dep_lines="${dep_lines}      {:oban, \"~> 2.17\"},
       {:oban_web, \"~> 2.12\"}
@@ -151,9 +156,13 @@ build_dependency_lines() {
 "
         fi
         ;;
+      *) 
+        echo "[DEBUG] Unknown dependency: '$dep'" >&2
+        ;;
     esac
   done
   
+  echo "[DEBUG] Final dep_lines: '$dep_lines'" >&2
   echo "$dep_lines"
 }
 
@@ -210,11 +219,15 @@ AWK_SCRIPT
 add_dependencies_to_mix() {
   local extra_deps="$1"
   
+  echo "[DEBUG] add_dependencies_to_mix called with: '$extra_deps'" >&2
+  
   if [ -n "$extra_deps" ]; then
     print_step "Adding dependencies to mix.exs"
     
     local temp_mix="$(mktemp)"
     local dep_lines=$(build_dependency_lines "$extra_deps")
+    
+    echo "[DEBUG] Generated dep_lines: '$dep_lines'" >&2
     
     create_awk_script
     
@@ -227,6 +240,8 @@ add_dependencies_to_mix() {
     # Replace the original file
     mv "$temp_mix" mix.exs
     print_success "Dependencies added to mix.exs"
+  else
+    echo "[DEBUG] extra_deps is empty, skipping dependency addition" >&2
   fi
 }
 

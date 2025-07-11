@@ -121,3 +121,7 @@ alias cursor='/opt/cursor.AppImage --no-sandbox'
 
 ### ---- Pay respects ----------------------------------------------------------
 eval "$(pay-respects bash)"
+
+# asdf setup
+. "$HOME/.asdf/asdf.sh"
+. "$HOME/.asdf/completions/asdf.bash"
