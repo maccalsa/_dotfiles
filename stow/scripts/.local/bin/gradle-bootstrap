@@ -21,7 +21,104 @@ readonly DEFAULT_PACKAGE_PREFIX="com.example"
 readonly SPRING_STARTER_URL="https://start.spring.io/starter.zip"
 readonly GITIGNORE_URL="https://raw.githubusercontent.com/github/gitignore/main/Java.gitignore"
 
-# Spring Boot starters mapping
+# Spring Boot starters mapping - Comprehensive list with categories
+declare -A SPRING_DEPENDENCIES=(
+  # Web
+  [web]="Spring Web (Tomcat) - Classic Spring MVC for building web applications and REST services"
+  [webflux]="Spring Reactive Web (Netty) - Reactive web framework for non-blocking, event-driven applications"
+  [websocket]="WebSocket Support - WebSocket endpoints with SockJS and STOMP"
+  [validation]="Bean Validation - JSR‑303 validation"
+  
+  # Data
+  [data-jpa]="Spring Data JPA - Simplifies JPA-based data access layers"
+  [jdbc]="JDBC - Classic JDBC support for relational databases"
+  [r2dbc]="R2DBC - Reactive relational database connectivity"
+  [data-mongodb]="Spring Data MongoDB - Support for reactive and blocking MongoDB drivers"
+  [data-redis]="Spring Data Redis - Redis key–value support"
+  [data-elasticsearch]="Spring Data Elasticsearch - Integration with Elasticsearch"
+  [rest-repositories]="Spring Data REST - Creates hypermedia-driven REST APIs from Spring Data repositories"
+  
+  # Security
+  [security]="Spring Security - Authentication and authorization support"
+  [oauth2-client]="OAuth2 Client - OAuth2/OpenID Connect client support"
+  [oauth2-resource-server]="OAuth2 Resource Server - Secured resource server with JWT/OAuth2"
+  
+  # Cloud
+  [cloud-eureka]="Spring Cloud Eureka - Service discovery using Netflix Eureka"
+  [cloud-config-client]="Spring Cloud Config Client - Externalized configuration management"
+  [cloud-gateway]="Spring Cloud Gateway - API gateway built on Spring WebFlux"
+  
+  # Messaging
+  [amqp]="Spring for RabbitMQ - AMQP messaging with RabbitMQ"
+  [kafka]="Spring for Apache Kafka - Messaging with Kafka"
+  [mail]="Spring for JavaMail - JavaMail integration for sending email"
+  
+  # Development Tools
+  [devtools]="Spring Boot DevTools - Developer productivity enhancements (auto-restart, live reload)"
+  [lombok]="Project Lombok - Generate boilerplate code using annotations"
+  [configuration-processor]="Configuration Processor - Metadata generation for @ConfigurationProperties"
+  
+  # Monitoring
+  [actuator]="Spring Boot Actuator - Production-ready monitoring & management endpoints"
+  [wavefront]="Wavefront Tracing - Wavefront integration for observability"
+  [zipkin]="Zipkin Tracing - Distributed tracing with Zipkin"
+  [sleuth]="Spring Cloud Sleuth - Deprecated tracing — superseded by Micrometer"
+  
+  # Testing
+  [testcontainers]="Testcontainers - Container-based integration tests"
+  [restdocs]="Spring REST Docs - Documentation generation for RESTful APIs"
+  
+  # Templating
+  [thymeleaf]="Thymeleaf - Server-side template engine for Spring MVC"
+  [thymeleaf-reactive]="Thymeleaf Reactive - Reactive support for Thymeleaf with Spring WebFlux"
+  [freemarker]="FreeMarker - Java-based template engine"
+  [mustache]="Mustache - Logic-less templating language"
+  
+  # Task Processing
+  [batch]="Spring Batch - Batch processing framework"
+  [integration]="Spring Integration - Enterprise integration patterns support"
+)
+
+# Category mapping for better organization
+declare -A DEPENDENCY_CATEGORIES=(
+  [web]="Web"
+  [webflux]="Web"
+  [websocket]="Web"
+  [validation]="Web"
+  [data-jpa]="Data"
+  [jdbc]="Data"
+  [r2dbc]="Data"
+  [data-mongodb]="Data"
+  [data-redis]="Data"
+  [data-elasticsearch]="Data"
+  [rest-repositories]="Data"
+  [security]="Security"
+  [oauth2-client]="Security"
+  [oauth2-resource-server]="Security"
+  [cloud-eureka]="Cloud"
+  [cloud-config-client]="Cloud"
+  [cloud-gateway]="Cloud"
+  [amqp]="Messaging"
+  [kafka]="Messaging"
+  [mail]="Messaging"
+  [devtools]="Development Tools"
+  [lombok]="Development Tools"
+  [configuration-processor]="Development Tools"
+  [actuator]="Monitoring"
+  [wavefront]="Monitoring"
+  [zipkin]="Monitoring"
+  [sleuth]="Monitoring"
+  [testcontainers]="Testing"
+  [restdocs]="Testing"
+  [thymeleaf]="Templating"
+  [thymeleaf-reactive]="Templating"
+  [freemarker]="Templating"
+  [mustache]="Templating"
+  [batch]="Task Processing"
+  [integration]="Task Processing"
+)
+
+# Legacy arrays for backward compatibility
 declare -A SPRING_STARTERS=(
   [1]="webflux"
   [2]="data-r2dbc"
@@ -211,59 +308,149 @@ get_language_choice() {
   esac
 }
 
-get_spring_dependencies() {
-  echo "Select Spring dependencies (comma-separated numbers, e.g. 1,2,5):"
-  # Iterate through the array in numerical order
-  for i in {1..10}; do
-    if [[ -n "${SPRING_STARTERS[$i]}" ]]; then
-      printf "%2d. %s\n" "$i" "${SPRING_STARTER_NAMES[$i]}"
+display_spring_dependencies() {
+  echo ""
+  echo "📚 Available Spring Boot Dependencies (by category):"
+  echo "=================================================="
+  echo ""
+  
+  # Get unique categories
+  local -A categories
+  for dep in "${!SPRING_DEPENDENCIES[@]}"; do
+    local category="${DEPENDENCY_CATEGORIES[$dep]}"
+    categories["$category"]=1
+  done
+  
+  # Display dependencies by category
+  local counter=1
+  for category in "Web" "Data" "Security" "Cloud" "Messaging" "Development Tools" "Monitoring" "Testing" "Templating" "Task Processing"; do
+    if [[ -n "${categories[$category]}" ]]; then
+      echo "🔹 $category:"
+      for dep in "${!SPRING_DEPENDENCIES[@]}"; do
+        if [[ "${DEPENDENCY_CATEGORIES[$dep]}" == "$category" ]]; then
+          local description="${SPRING_DEPENDENCIES[$dep]}"
+          printf "  %2d. %s\n" "$counter" "$description"
+          counter=$((counter + 1))
+        fi
+      done
+      echo ""
     fi
   done
   
-  read -rp "Selection [1]: " selection
+  echo "=================================================="
+  echo ""
+}
+
+display_spring_dependencies_simple() {
+  echo ""
+  echo "📚 Available Spring Boot Dependencies:"
+  echo "======================================"
+  # Iterate through the array in numerical order
+  for i in {1..10}; do
+    if [[ -n "${SPRING_STARTERS[$i]}" ]]; then
+      printf "  %2d. %s\n" "$i" "${SPRING_STARTER_NAMES[$i]}"
+    fi
+  done
+  echo "======================================"
+  echo ""
+}
+
+get_spring_dependencies() {
+  read -rp "Select dependencies (comma-separated numbers, e.g. 1,2,5) [1]: " selection
   selection="${selection:-1}"
   
   local dependencies=""
   IFS=',' read -ra choices <<< "$selection"
+  
+  # Create a mapping from numbers to dependency codes
+  local -A number_to_dep
+  local counter=1
+  for category in "Web" "Data" "Security" "Cloud" "Messaging" "Development Tools" "Monitoring" "Testing" "Templating" "Task Processing"; do
+    for dep in "${!SPRING_DEPENDENCIES[@]}"; do
+      if [[ "${DEPENDENCY_CATEGORIES[$dep]}" == "$category" ]]; then
+        number_to_dep["$counter"]="$dep"
+        counter=$((counter + 1))
+      fi
+    done
+  done
+  
   for choice in "${choices[@]}"; do
-    local dep="${SPRING_STARTERS[${choice// /}]}"
+    local dep="${number_to_dep[${choice// /}]}"
     if [[ -n "$dep" ]]; then
       dependencies+="${dep},"
     fi
   done
   
   # Add custom dependencies
+  echo ""
   read -rp "Any custom dependencies (comma-separated, or ENTER to skip): " custom_deps
   if [[ -n "$custom_deps" ]]; then
     dependencies+="${custom_deps// /},"
   fi
   
+  # Return the result
   echo "${dependencies%,}"  # trim trailing comma
 }
 
 get_spring_dependencies_for_module() {
   # Display the options
-  echo "  📚 Spring dependencies (comma-separated numbers):" >&2
-  # Iterate through the array in numerical order
-  for i in {1..10}; do
-    if [[ -n "${SPRING_STARTERS[$i]}" ]]; then
-      printf "    %2d. %s\n" "$i" "${SPRING_STARTER_NAMES[$i]}" >&2
+  echo "  📚 Available Spring Boot Dependencies (by category):" >&2
+  echo "  ==================================================" >&2
+  echo "" >&2
+  
+  # Get unique categories
+  local -A categories
+  for dep in "${!SPRING_DEPENDENCIES[@]}"; do
+    local category="${DEPENDENCY_CATEGORIES[$dep]}"
+    categories["$category"]=1
+  done
+  
+  # Display dependencies by category
+  local counter=1
+  for category in "Web" "Data" "Security" "Cloud" "Messaging" "Development Tools" "Monitoring" "Testing" "Templating" "Task Processing"; do
+    if [[ -n "${categories[$category]}" ]]; then
+      echo "  🔹 $category:" >&2
+      for dep in "${!SPRING_DEPENDENCIES[@]}"; do
+        if [[ "${DEPENDENCY_CATEGORIES[$dep]}" == "$category" ]]; then
+          local description="${SPRING_DEPENDENCIES[$dep]}"
+          printf "    %2d. %s\n" "$counter" "$description" >&2
+          counter=$((counter + 1))
+        fi
+      done
+      echo "" >&2
     fi
   done
   
-  read -rp "    Your selection [1]: " selection >&2
+  echo "  ==================================================" >&2
+  echo "" >&2
+  
+  read -rp "    Select dependencies (comma-separated numbers) [1]: " selection >&2
   selection="${selection:-1}"
   
   local dependencies=""
   IFS=',' read -ra choices <<< "$selection"
+  
+  # Create a mapping from numbers to dependency codes
+  local -A number_to_dep
+  local counter=1
+  for category in "Web" "Data" "Security" "Cloud" "Messaging" "Development Tools" "Monitoring" "Testing" "Templating" "Task Processing"; do
+    for dep in "${!SPRING_DEPENDENCIES[@]}"; do
+      if [[ "${DEPENDENCY_CATEGORIES[$dep]}" == "$category" ]]; then
+        number_to_dep["$counter"]="$dep"
+        counter=$((counter + 1))
+      fi
+    done
+  done
+  
   for choice in "${choices[@]}"; do
-    local dep="${SPRING_STARTERS[${choice// /}]}"
+    local dep="${number_to_dep[${choice// /}]}"
     if [[ -n "$dep" ]]; then
       dependencies+="${dep},"
     fi
   done
   
   # Add custom dependencies
+  echo "" >&2
   read -rp "    Any custom deps (comma-separated)? " custom_deps >&2
   if [[ -n "$custom_deps" ]]; then
     dependencies+="${custom_deps// /},"
@@ -512,6 +699,9 @@ setup_spring_app() {
   build_type_choice="${build_type_choice:-1}"
   gradle_type=$([[ "$build_type_choice" == "2" ]] && echo "gradle-project" || echo "gradle-project-kotlin")
   
+  # Display dependencies first
+  display_spring_dependencies
+  # Then get the dependencies
   dependencies=$(get_spring_dependencies)
   
   read -rp "Spring Boot version [$DEFAULT_SPRING_BOOT_VERSION]: " spring_boot_version
