@@ -1,0 +1,64 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)" 
+source "$SCRIPT_DIR/core-script.sh"
+source "$SCRIPT_DIR/monokit-files/readme.sh"
+source "$SCRIPT_DIR/monokit-files/github-actions.sh"
+
+while true; do
+  clear
+  echo "🧱 TypeScript Monorepo CLI"
+  echo "--------------------------"
+  echo "1) Init new monorepo"
+  echo "2) Add a new app"
+  echo "3) Add a new library"
+  echo "4) Switch dependency (local <-> remote)"
+  echo "5) Generate README"
+  echo "6) Setup GitHub Actions"
+  echo "7) Generate Docs"
+  echo "0) Exit"
+  echo
+  read -p "Select an option: " choice
+
+  case $choice in
+    1)
+      read -p "Enter repo name: " repo_name
+      init_project "init" "$repo_name"
+      ;;
+    2)
+      read -p "Enter app name: " app_name
+      add_app "add" "$app_name"
+      ;;
+    3)
+      read -p "Enter library name: " lib_name
+      add_lib "add" "$lib_name"
+      ;;
+    4)
+      read -p "Target (name only): " target
+      read -p "Type (app/lib): " target_type
+      read -p "Mode (local/remote): " mode
+      ./scripts/core-script.sh switch "$target" "$target_type" "$mode"
+      ;;
+    5)
+      generate_readme "My Monorepo"
+      ;;
+    6)
+      setup_github_actions
+      ;;
+    7)
+      ./scripts/docs.sh
+      ;;
+    0)
+      echo "👋 Bye!"
+      exit 0
+      ;;
+    *)
+      echo "❌ Invalid option"
+      sleep 1
+      ;;
+  esac
+
+  echo
+  read -p "Press Enter to continue..."
+done
+

@@ -1,0 +1,846 @@
+#!/bin/bash
+
+set -e
+
+COMMAND=$1
+TARGET=$2
+TYPE=$3
+MODE=$4
+
+# Config
+ORG_NAME="@myorg"
+
+# Helpers
+error() {
+  echo "❌ $1"
+  exit 1
+}
+
+success() {
+  echo "✅ $1"
+}
+
+get_package_path() {
+  if [[ "$TYPE" == "app" ]]; then
+    echo "apps/$TARGET/package.json"
+  elif [[ "$TYPE" == "lib" ]]; then
+    echo "packages/$TARGET/package.json"
+  else
+    error "Unknown type: $TYPE"
+  fi
+}
+
+switch_to_local() {
+  PKG_PATH=$(get_package_path)
+  if [ ! -f "$PKG_PATH" ]; then error "Package file not found: $PKG_PATH"; fi
+
+  TMP=$(mktemp)
+  jq "if .dependencies then .dependencies |= with_entries(
+        if .key | startswith(\"$ORG_NAME/\") then .value = \"workspace:*\" else . end
+      ) else . end" "$PKG_PATH" > "$TMP" && mv "$TMP" "$PKG_PATH"
+
+  success "Switched $TARGET ($TYPE) dependencies to workspace:*"
+}
+
+switch_to_remote() {
+  PKG_PATH=$(get_package_path)
+  if [ ! -f "$PKG_PATH" ]; then error "Package file not found: $PKG_PATH"; fi
+
+  TMP=$(mktemp)
+  jq "if .dependencies then .dependencies |= with_entries(
+        if .key | startswith(\"$ORG_NAME/\") then .value = \"^0.1.0\" else . end
+      ) else . end" "$PKG_PATH" > "$TMP" && mv "$TMP" "$PKG_PATH"
+
+  success "Switched $TARGET ($TYPE) dependencies to ^0.1.0"
+}
+
+init_project() {
+  REPO_NAME=$2
+  if [ -z "$REPO_NAME" ]; then error "Please provide a repo name: ./core-script.sh init my-repo"; fi
+
+  # Capture the script directory before changing directories
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+  echo "🚀 Initializing monorepo: $REPO_NAME"
+  mkdir "$REPO_NAME"
+  cd "$REPO_NAME"
+  git init
+  pnpm init 
+
+  mkdir -p apps packages .github/workflows
+
+  cat > package.json <<EOL
+{
+  "name": "$REPO_NAME",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r dev",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format",
+    "test": "pnpm -r test",
+    "test:ui": "pnpm -r test:ui",
+    "clean": "pnpm -r clean",
+    "type-check": "pnpm -r type-check",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish"
+  }
+}
+EOL
+
+  # Create pnpm-workspace.yaml instead of using workspaces field
+  cat > pnpm-workspace.yaml <<EOL
+packages:
+  - 'apps/*'
+  - 'packages/*'
+EOL
+
+  cat > tsconfig.base.json <<EOL
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "declaration": true,
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  }
+}
+EOL
+
+  cat > .gitignore <<EOL
+node_modules/
+dist/
+coverage/
+.env
+.DS_Store
+.changeset/
+EOL
+
+  # Install dependencies without workspace-root flag during initialization
+  pnpm add -w -D typescript tsup vitest @vitest/ui eslint prettier \
+    eslint-config-prettier eslint-plugin-import @typescript-eslint/parser \
+    @typescript-eslint/eslint-plugin @types/node @changesets/cli \
+    @eslint/js
+
+  # Create ESLint configuration
+  cat > eslint.config.js <<EOL
+import js from '@eslint/js'
+import typescript from '@typescript-eslint/eslint-plugin'
+import typescriptParser from '@typescript-eslint/parser'
+import prettier from 'eslint-config-prettier'
+import importPlugin from 'eslint-plugin-import'
+
+export default [
+  js.configs.recommended,
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+      import: importPlugin,
+    },
+    rules: {
+      ...typescript.configs.recommended.rules,
+      'import/order': [
+        'error',
+        {
+          groups: [
+            'builtin',
+            'external',
+            'internal',
+            'parent',
+            'sibling',
+            'index',
+          ],
+          'newlines-between': 'always',
+          alphabetize: {
+            order: 'asc',
+            caseInsensitive: true,
+          },
+        },
+      ],
+    },
+  },
+  {
+    ignores: [
+      'node_modules/**',
+      'dist/**',
+      'packages/*/dist/**',
+      'apps/*/dist/**',
+    ],
+  },
+  prettier,
+]
+EOL
+
+  # Create Prettier configuration
+  cat > .prettierrc <<EOL
+{
+  "semi": true,
+  "trailingComma": "es5",
+  "singleQuote": true,
+  "printWidth": 80,
+  "tabWidth": 2
+}
+EOL
+
+  pnpm exec changeset init
+
+  # Source helper scripts from the original directory
+  source "$SCRIPT_DIR/monokit-files/readme.sh"
+  source "$SCRIPT_DIR/monokit-files/github-actions.sh"
+
+  generate_readme "$REPO_NAME"
+  setup_github_actions
+  success "Monorepo initialized: $REPO_NAME"
+}
+
+# Helper function to add scripts to root package.json for a new package
+add_package_scripts_to_root() {
+  local PKG_NAME=$1
+  local PKG_TYPE=$2
+  
+  if [ ! -f "package.json" ]; then
+    error "Root package.json not found. Run this from the monorepo root."
+  fi
+  
+  # Create temporary file for jq operations
+  TMP=$(mktemp)
+  
+  # Add individual package scripts to root package.json using shell variables
+  jq --arg pkg "$PKG_NAME" --arg build_cmd "pnpm --filter $PKG_NAME build" \
+     --arg dev_cmd "pnpm --filter $PKG_NAME dev" \
+     --arg lint_cmd "pnpm --filter $PKG_NAME lint" \
+     --arg format_cmd "pnpm --filter $PKG_NAME format" \
+     --arg test_cmd "pnpm --filter $PKG_NAME test" \
+     --arg test_ui_cmd "pnpm --filter $PKG_NAME test:ui" \
+     --arg clean_cmd "pnpm --filter $PKG_NAME clean" \
+     --arg type_check_cmd "pnpm --filter $PKG_NAME type-check" '
+    .scripts += {
+      ($pkg + ":build"): $build_cmd,
+      ($pkg + ":dev"): $dev_cmd,
+      ($pkg + ":lint"): $lint_cmd,
+      ($pkg + ":format"): $format_cmd,
+      ($pkg + ":test"): $test_cmd,
+      ($pkg + ":test:ui"): $test_ui_cmd,
+      ($pkg + ":clean"): $clean_cmd,
+      ($pkg + ":type-check"): $type_check_cmd
+    }
+  ' package.json > "$TMP" && mv "$TMP" package.json
+  
+  success "Added scripts for $PKG_NAME to root package.json"
+}
+
+# Helper function to sanitize package names for TypeScript
+sanitize_for_typescript() {
+  local name=$1
+  # Convert kebab-case to camelCase
+  echo "$name" | sed 's/-\([a-z]\)/\U\1/g'
+}
+
+add_lib() {
+  LIB_NAME=$3
+  if [ -z "$LIB_NAME" ]; then
+    error "Usage: ./core-script.sh add lib <lib-name>"
+  fi
+
+  # Check if we're in a workspace by looking for pnpm-workspace.yaml
+  if [ -f "pnpm-workspace.yaml" ]; then
+    DEST="packages/$LIB_NAME"
+  else
+    error "Not in a workspace. Run this command from within a monorepo directory."
+  fi
+
+  PKG_NAME="@myorg/$LIB_NAME"
+  TS_NAME=$(sanitize_for_typescript "$LIB_NAME")
+
+  if [ -d "$DEST" ]; then
+    error "Library already exists: $DEST"
+  fi
+
+  echo "📦 Creating new library: $PKG_NAME"
+  mkdir -p "$DEST/src"
+
+  # package.json with comprehensive scripts
+  cat > "$DEST/package.json" <<EOL
+{
+  "name": "$PKG_NAME",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm,cjs",
+    "watch": "tsup src/index.ts --watch",
+    "dev": "tsup src/index.ts --watch --onSuccess \\"node dist/index.js\\"",
+    "lint": "eslint . --ext .ts --config ../../eslint.config.js",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  }
+}
+EOL
+
+  # tsconfig.json
+  cat > "$DEST/tsconfig.json" <<EOL
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src"]
+}
+EOL
+
+  # vitest.config.ts
+  cat > "$DEST/vitest.config.ts" <<EOL
+import { defineConfig } from 'vitest/config';
+export default defineConfig({ test: { globals: true, environment: 'node' } });
+EOL
+
+  # Initial source file with sanitized name
+  cat > "$DEST/src/index.ts" <<EOL
+/**
+ * Adds two numbers together
+ * @param a - First number
+ * @param b - Second number
+ * @returns The sum of a and b
+ */
+export const add = (a: number, b: number): number => {
+  return a + b;
+};
+
+/**
+ * Greets a person by name
+ * @param name - The name to greet
+ * @returns A greeting message
+ */
+export const greet = (name: string): string => {
+  return \`Hello, \${name}!\`;
+};
+
+export const $TS_NAME = () => {
+  return "$PKG_NAME";
+};
+EOL
+
+  # Create test folder and test file
+  mkdir -p "$DEST/src/__tests__"
+  cat > "$DEST/src/__tests__/index.test.ts" <<EOL
+import { describe, it, expect } from 'vitest';
+import { add, greet, $TS_NAME } from '../index';
+
+describe('$TS_NAME', () => {
+  describe('add', () => {
+    it('should add two positive numbers', () => {
+      expect(add(2, 3)).toBe(5);
+    });
+
+    it('should add negative numbers', () => {
+      expect(add(-1, -2)).toBe(-3);
+    });
+
+    it('should add zero', () => {
+      expect(add(5, 0)).toBe(5);
+    });
+  });
+
+  describe('greet', () => {
+    it('should greet a person by name', () => {
+      expect(greet('Alice')).toBe('Hello, Alice!');
+    });
+
+    it('should handle empty string', () => {
+      expect(greet('')).toBe('Hello, !');
+    });
+  });
+
+  describe('$TS_NAME', () => {
+    it('should return the package name', () => {
+      expect($TS_NAME()).toBe('$PKG_NAME');
+    });
+  });
+});
+EOL
+
+  # Add scripts to root package.json
+  add_package_scripts_to_root "$PKG_NAME" "lib"
+
+  success "Library '$PKG_NAME' created in $DEST"
+}
+
+add_app() {
+  APP_NAME=$3
+  if [ -z "$APP_NAME" ]; then
+    error "Usage: ./core-script.sh add app <app-name>"
+  fi
+
+  # Check if we're in a workspace by looking for pnpm-workspace.yaml
+  if [ -f "pnpm-workspace.yaml" ]; then
+    DEST="apps/$APP_NAME"
+  else
+    error "Not in a workspace. Run this command from within a monorepo directory."
+  fi
+
+  PKG_NAME="@myorg/$APP_NAME"
+  TS_NAME=$(sanitize_for_typescript "$APP_NAME")
+
+  if [ -d "$DEST" ]; then
+    error "App already exists: $DEST"
+  fi
+
+  echo "🧠 What type of app is '$APP_NAME'?"
+  echo "1) CLI"
+  echo "2) API (Express)"
+  echo "3) Web (Vite + React)"
+  echo -n "Enter choice [1-3]: "
+  read APP_TYPE
+
+  mkdir -p "$DEST/src"
+
+  case "$APP_TYPE" in
+    1)
+      echo "🛠 Setting up CLI app..."
+      # CLI package.json
+      cat > "$DEST/package.json" <<EOL
+{
+  "name": "$PKG_NAME",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs",
+    "watch": "tsup src/index.ts --watch",
+    "dev": "tsup src/index.ts --watch --onSuccess \\"node dist/index.js\\"",
+    "lint": "eslint . --ext .ts --config ../../eslint.config.js",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  }
+}
+EOL
+      pnpm add --filter "$PKG_NAME" chalk
+      cat > "$DEST/src/index.ts" <<EOL
+import chalk from 'chalk';
+import { add, greet } from './utils';
+
+/**
+ * Main CLI function
+ */
+export const runCLI = () => {
+  console.log(chalk.green('Hello from $TS_NAME CLI app!'));
+  console.log(chalk.blue('2 + 3 =', add(2, 3)));
+  console.log(chalk.yellow(greet('User')));
+};
+
+// Run the CLI if this file is executed directly
+if (import.meta.url === \`file://\${process.argv[1]}\`) {
+  runCLI();
+}
+EOL
+
+      # Create utils file with functions
+      cat > "$DEST/src/utils.ts" <<EOL
+/**
+ * Adds two numbers together
+ * @param a - First number
+ * @param b - Second number
+ * @returns The sum of a and b
+ */
+export const add = (a: number, b: number): number => {
+  return a + b;
+};
+
+/**
+ * Greets a person by name
+ * @param name - The name to greet
+ * @returns A greeting message
+ */
+export const greet = (name: string): string => {
+  return \`Hello, \${name}!\`;
+};
+EOL
+
+      # Create test folder and test file
+      mkdir -p "$DEST/src/__tests__"
+      cat > "$DEST/src/__tests__/utils.test.ts" <<EOL
+import { describe, it, expect } from 'vitest';
+import { add, greet } from '../utils';
+
+describe('$TS_NAME utils', () => {
+  describe('add', () => {
+    it('should add two positive numbers', () => {
+      expect(add(2, 3)).toBe(5);
+    });
+
+    it('should add negative numbers', () => {
+      expect(add(-1, -2)).toBe(-3);
+    });
+
+    it('should add zero', () => {
+      expect(add(5, 0)).toBe(5);
+    });
+  });
+
+  describe('greet', () => {
+    it('should greet a person by name', () => {
+      expect(greet('Alice')).toBe('Hello, Alice!');
+    });
+
+    it('should handle empty string', () => {
+      expect(greet('')).toBe('Hello, !');
+    });
+  });
+});
+EOL
+      ;;
+    2)
+      echo "🛠 Setting up Express API app..."
+      # API package.json
+      cat > "$DEST/package.json" <<EOL
+{
+  "name": "$PKG_NAME",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs",
+    "watch": "tsup src/index.ts --watch",
+    "dev": "tsup src/index.ts --watch --onSuccess \\"node dist/index.js\\"",
+    "start": "node dist/index.js",
+    "lint": "eslint . --ext .ts --config ../../eslint.config.js",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  }
+}
+EOL
+      pnpm add --filter "$PKG_NAME" express
+      cat > "$DEST/src/index.ts" <<EOL
+import express from 'express';
+import { add, greet } from './utils';
+
+const app = express();
+app.use(express.json());
+
+app.get('/', (_req, res) => {
+  res.json({ 
+    message: 'Hello from $TS_NAME API!',
+    example: add(2, 3),
+    greeting: greet('API User')
+  });
+});
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', service: '$TS_NAME' });
+});
+
+app.post('/calculate', (req, res) => {
+  const { a, b } = req.body;
+  if (typeof a !== 'number' || typeof b !== 'number') {
+    return res.status(400).json({ error: 'Both a and b must be numbers' });
+  }
+  res.json({ result: add(a, b) });
+});
+
+app.listen(3000, () => {
+  console.log('$TS_NAME API running at http://localhost:3000');
+});
+EOL
+
+      # Create utils file with functions
+      cat > "$DEST/src/utils.ts" <<EOL
+/**
+ * Adds two numbers together
+ * @param a - First number
+ * @param b - Second number
+ * @returns The sum of a and b
+ */
+export const add = (a: number, b: number): number => {
+  return a + b;
+};
+
+/**
+ * Greets a person by name
+ * @param name - The name to greet
+ * @returns A greeting message
+ */
+export const greet = (name: string): string => {
+  return \`Hello, \${name}!\`;
+};
+EOL
+
+      # Create test folder and test file
+      mkdir -p "$DEST/src/__tests__"
+      cat > "$DEST/src/__tests__/utils.test.ts" <<EOL
+import { describe, it, expect } from 'vitest';
+import { add, greet } from '../utils';
+
+describe('$TS_NAME utils', () => {
+  describe('add', () => {
+    it('should add two positive numbers', () => {
+      expect(add(2, 3)).toBe(5);
+    });
+
+    it('should add negative numbers', () => {
+      expect(add(-1, -2)).toBe(-3);
+    });
+
+    it('should add zero', () => {
+      expect(add(5, 0)).toBe(5);
+    });
+  });
+
+  describe('greet', () => {
+    it('should greet a person by name', () => {
+      expect(greet('Alice')).toBe('Hello, Alice!');
+    });
+
+    it('should handle empty string', () => {
+      expect(greet('')).toBe('Hello, !');
+    });
+  });
+});
+EOL
+      ;;
+    3)
+      echo "🛠 Setting up Web (Vite + React) app..."
+      # Web app package.json
+      cat > "$DEST/package.json" <<EOL
+{
+  "name": "$PKG_NAME",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .ts,.tsx --config ../../eslint.config.js",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  }
+}
+EOL
+      pnpm add --filter "$PKG_NAME" react react-dom
+      pnpm add --filter "$PKG_NAME" -D vite @vitejs/plugin-react @types/react @types/react-dom @testing-library/react @testing-library/jest-dom jsdom
+      cat > "$DEST/src/index.tsx" <<EOL
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+EOL
+      cat > "$DEST/src/App.tsx" <<EOL
+import React from 'react';
+import { add, greet } from './utils';
+
+function App() {
+  const result = add(2, 3);
+  const greeting = greet('React User');
+
+  return (
+    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+      <h1>Hello from $TS_NAME React app!</h1>
+      <p>2 + 3 = {result}</p>
+      <p>{greeting}</p>
+    </div>
+  );
+}
+
+export default App;
+EOL
+
+      # Create utils file with functions
+      cat > "$DEST/src/utils.ts" <<EOL
+/**
+ * Adds two numbers together
+ * @param a - First number
+ * @param b - Second number
+ * @returns The sum of a and b
+ */
+export const add = (a: number, b: number): number => {
+  return a + b;
+};
+
+/**
+ * Greets a person by name
+ * @param name - The name to greet
+ * @returns A greeting message
+ */
+export const greet = (name: string): string => {
+  return \`Hello, \${name}!\`;
+};
+EOL
+
+      mkdir -p "$DEST/public"
+      cat > "$DEST/index.html" <<EOL
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>$APP_NAME</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>
+EOL
+      # Vite config
+      cat > "$DEST/vite.config.ts" <<EOL
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()]
+});
+EOL
+
+      # Vitest config for React
+      cat > "$DEST/vitest.config.ts" <<EOL
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/__tests__/setup.ts'],
+  },
+});
+EOL
+
+      # Test setup file
+      cat > "$DEST/src/__tests__/setup.ts" <<EOL
+import '@testing-library/jest-dom';
+EOL
+
+      # Create test folder and test file
+      mkdir -p "$DEST/src/__tests__"
+      cat > "$DEST/src/__tests__/utils.test.ts" <<EOL
+import { describe, it, expect } from 'vitest';
+import { add, greet } from '../utils';
+
+describe('$TS_NAME utils', () => {
+  describe('add', () => {
+    it('should add two positive numbers', () => {
+      expect(add(2, 3)).toBe(5);
+    });
+
+    it('should add negative numbers', () => {
+      expect(add(-1, -2)).toBe(-3);
+    });
+
+    it('should add zero', () => {
+      expect(add(5, 0)).toBe(5);
+    });
+  });
+
+  describe('greet', () => {
+    it('should greet a person by name', () => {
+      expect(greet('Alice')).toBe('Hello, Alice!');
+    });
+
+    it('should handle empty string', () => {
+      expect(greet('')).toBe('Hello, !');
+    });
+  });
+});
+EOL
+
+      # Create React component test
+      cat > "$DEST/src/__tests__/App.test.tsx" <<EOL
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import App from '../App';
+
+describe('App', () => {
+  it('renders the app title', () => {
+    render(<App />);
+    expect(screen.getByText(/Hello from $TS_NAME React app!/)).toBeInTheDocument();
+  });
+
+  it('displays the calculation result', () => {
+    render(<App />);
+    expect(screen.getByText('2 + 3 = 5')).toBeInTheDocument();
+  });
+
+  it('displays the greeting', () => {
+    render(<App />);
+    expect(screen.getByText('Hello, React User!')).toBeInTheDocument();
+  });
+});
+EOL
+      ;;
+    *)
+      error "Invalid app type selection."
+      ;;
+  esac
+
+  cat > "$DEST/tsconfig.json" <<EOL
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src"]
+}
+EOL
+
+  # Add scripts to root package.json
+  add_package_scripts_to_root "$PKG_NAME" "app"
+
+  success "App '$APP_NAME' created at $DEST"
+}
+
+
+
+# Main command dispatcher
+case "$COMMAND" in
+  init)
+    init_project "$@"
+    ;;
+  switch)
+    if [ -z "$TARGET" ] || [ -z "$TYPE" ] || [ -z "$MODE" ]; then
+      error "Usage: ./core-script.sh switch <target> <app|lib> <local|remote>"
+    fi
+    if [[ "$MODE" == "local" ]]; then
+      switch_to_local
+    elif [[ "$MODE" == "remote" ]]; then
+      switch_to_remote
+    else
+      error "Unknown mode: $MODE"
+    fi
+    ;;
+  add)
+    if [[ "$2" == "lib" ]]; then
+      add_lib "$@"
+     elif [[ "$2" == "app" ]]; then
+      add_app "$@"
+    else
+      error "Usage: ./core-script.sh add lib|app <name>"
+    fi
+    ;;
+  *)
+    error "Unknown command: $COMMAND"
+    ;;
+esac
+
+
