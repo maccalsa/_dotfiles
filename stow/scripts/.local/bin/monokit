@@ -2,6 +2,9 @@
 
 set -e
 
+# Capture the script directory for sourcing other scripts
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 COMMAND=$1
 TARGET=$2
 TYPE=$3
@@ -57,9 +60,6 @@ switch_to_remote() {
 init_project() {
   REPO_NAME=$2
   if [ -z "$REPO_NAME" ]; then error "Please provide a repo name: ./core-script.sh init my-repo"; fi
-
-  # Capture the script directory before changing directories
-  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
   echo "🚀 Initializing monorepo: $REPO_NAME"
   mkdir "$REPO_NAME"
@@ -404,405 +404,35 @@ add_app() {
   echo "1) CLI"
   echo "2) API (Express)"
   echo "3) Web (Vite + React)"
-  echo -n "Enter choice [1-3]: "
+  echo "4) Web (Next.js)"
+  echo -n "Enter choice [1-4]: "
   read APP_TYPE
 
   mkdir -p "$DEST/src"
 
+  # Source the modular app creation scripts
+  source "$SCRIPT_DIR/monokit-files/cli-app.sh"
+  source "$SCRIPT_DIR/monokit-files/express-app.sh"
+  source "$SCRIPT_DIR/monokit-files/vite-app.sh"
+  source "$SCRIPT_DIR/monokit-files/nextjs-app.sh"
+
   case "$APP_TYPE" in
     1)
-      echo "🛠 Setting up CLI app..."
-      # CLI package.json
-      cat > "$DEST/package.json" <<EOL
-{
-  "name": "$PKG_NAME",
-  "version": "0.0.1",
-  "private": true,
-  "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs",
-    "watch": "tsup src/index.ts --watch",
-    "dev": "tsup src/index.ts --watch --onSuccess \\"node dist/index.js\\"",
-    "lint": "eslint . --ext .ts --config ../../eslint.config.js",
-    "format": "prettier --write .",
-    "test": "vitest run",
-    "test:ui": "vitest --ui",
-    "clean": "rm -rf dist",
-    "type-check": "tsc --noEmit"
-  }
-}
-EOL
-      pnpm add --filter "$PKG_NAME" chalk
-      cat > "$DEST/src/index.ts" <<EOL
-import chalk from 'chalk';
-import { add, greet } from './utils';
-
-/**
- * Main CLI function
- */
-export const runCLI = () => {
-  console.log(chalk.green('Hello from $TS_NAME CLI app!'));
-  console.log(chalk.blue('2 + 3 =', add(2, 3)));
-  console.log(chalk.yellow(greet('User')));
-};
-
-// Run the CLI if this file is executed directly
-if (import.meta.url === \`file://\${process.argv[1]}\`) {
-  runCLI();
-}
-EOL
-
-      # Create utils file with functions
-      cat > "$DEST/src/utils.ts" <<EOL
-/**
- * Adds two numbers together
- * @param a - First number
- * @param b - Second number
- * @returns The sum of a and b
- */
-export const add = (a: number, b: number): number => {
-  return a + b;
-};
-
-/**
- * Greets a person by name
- * @param name - The name to greet
- * @returns A greeting message
- */
-export const greet = (name: string): string => {
-  return \`Hello, \${name}!\`;
-};
-EOL
-
-      # Create test folder and test file
-      mkdir -p "$DEST/src/__tests__"
-      cat > "$DEST/src/__tests__/utils.test.ts" <<EOL
-import { describe, it, expect } from 'vitest';
-import { add, greet } from '../utils';
-
-describe('$TS_NAME utils', () => {
-  describe('add', () => {
-    it('should add two positive numbers', () => {
-      expect(add(2, 3)).toBe(5);
-    });
-
-    it('should add negative numbers', () => {
-      expect(add(-1, -2)).toBe(-3);
-    });
-
-    it('should add zero', () => {
-      expect(add(5, 0)).toBe(5);
-    });
-  });
-
-  describe('greet', () => {
-    it('should greet a person by name', () => {
-      expect(greet('Alice')).toBe('Hello, Alice!');
-    });
-
-    it('should handle empty string', () => {
-      expect(greet('')).toBe('Hello, !');
-    });
-  });
-});
-EOL
+      create_cli_app "$DEST" "$PKG_NAME" "$TS_NAME"
       ;;
     2)
-      echo "🛠 Setting up Express API app..."
-      # API package.json
-      cat > "$DEST/package.json" <<EOL
-{
-  "name": "$PKG_NAME",
-  "version": "0.0.1",
-  "private": true,
-  "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs",
-    "watch": "tsup src/index.ts --watch",
-    "dev": "tsup src/index.ts --watch --onSuccess \\"node dist/index.js\\"",
-    "start": "node dist/index.js",
-    "lint": "eslint . --ext .ts --config ../../eslint.config.js",
-    "format": "prettier --write .",
-    "test": "vitest run",
-    "test:ui": "vitest --ui",
-    "clean": "rm -rf dist",
-    "type-check": "tsc --noEmit"
-  }
-}
-EOL
-      pnpm add --filter "$PKG_NAME" express
-      cat > "$DEST/src/index.ts" <<EOL
-import express from 'express';
-import { add, greet } from './utils';
-
-const app = express();
-app.use(express.json());
-
-app.get('/', (_req, res) => {
-  res.json({ 
-    message: 'Hello from $TS_NAME API!',
-    example: add(2, 3),
-    greeting: greet('API User')
-  });
-});
-
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: '$TS_NAME' });
-});
-
-app.post('/calculate', (req, res) => {
-  const { a, b } = req.body;
-  if (typeof a !== 'number' || typeof b !== 'number') {
-    return res.status(400).json({ error: 'Both a and b must be numbers' });
-  }
-  res.json({ result: add(a, b) });
-});
-
-app.listen(3000, () => {
-  console.log('$TS_NAME API running at http://localhost:3000');
-});
-EOL
-
-      # Create utils file with functions
-      cat > "$DEST/src/utils.ts" <<EOL
-/**
- * Adds two numbers together
- * @param a - First number
- * @param b - Second number
- * @returns The sum of a and b
- */
-export const add = (a: number, b: number): number => {
-  return a + b;
-};
-
-/**
- * Greets a person by name
- * @param name - The name to greet
- * @returns A greeting message
- */
-export const greet = (name: string): string => {
-  return \`Hello, \${name}!\`;
-};
-EOL
-
-      # Create test folder and test file
-      mkdir -p "$DEST/src/__tests__"
-      cat > "$DEST/src/__tests__/utils.test.ts" <<EOL
-import { describe, it, expect } from 'vitest';
-import { add, greet } from '../utils';
-
-describe('$TS_NAME utils', () => {
-  describe('add', () => {
-    it('should add two positive numbers', () => {
-      expect(add(2, 3)).toBe(5);
-    });
-
-    it('should add negative numbers', () => {
-      expect(add(-1, -2)).toBe(-3);
-    });
-
-    it('should add zero', () => {
-      expect(add(5, 0)).toBe(5);
-    });
-  });
-
-  describe('greet', () => {
-    it('should greet a person by name', () => {
-      expect(greet('Alice')).toBe('Hello, Alice!');
-    });
-
-    it('should handle empty string', () => {
-      expect(greet('')).toBe('Hello, !');
-    });
-  });
-});
-EOL
+      create_express_app "$DEST" "$PKG_NAME" "$TS_NAME"
       ;;
     3)
-      echo "🛠 Setting up Web (Vite + React) app..."
-      # Web app package.json
-      cat > "$DEST/package.json" <<EOL
-{
-  "name": "$PKG_NAME",
-  "version": "0.0.1",
-  "private": true,
-  "scripts": {
-    "build": "vite build",
-    "dev": "vite",
-    "preview": "vite preview",
-    "lint": "eslint . --ext .ts,.tsx --config ../../eslint.config.js",
-    "format": "prettier --write .",
-    "test": "vitest run",
-    "test:ui": "vitest --ui",
-    "clean": "rm -rf dist",
-    "type-check": "tsc --noEmit"
-  }
-}
-EOL
-      pnpm add --filter "$PKG_NAME" react react-dom
-      pnpm add --filter "$PKG_NAME" -D vite @vitejs/plugin-react @types/react @types/react-dom @testing-library/react @testing-library/jest-dom jsdom
-      cat > "$DEST/src/index.tsx" <<EOL
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-EOL
-      cat > "$DEST/src/App.tsx" <<EOL
-import React from 'react';
-import { add, greet } from './utils';
-
-function App() {
-  const result = add(2, 3);
-  const greeting = greet('React User');
-
-  return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1>Hello from $TS_NAME React app!</h1>
-      <p>2 + 3 = {result}</p>
-      <p>{greeting}</p>
-    </div>
-  );
-}
-
-export default App;
-EOL
-
-      # Create utils file with functions
-      cat > "$DEST/src/utils.ts" <<EOL
-/**
- * Adds two numbers together
- * @param a - First number
- * @param b - Second number
- * @returns The sum of a and b
- */
-export const add = (a: number, b: number): number => {
-  return a + b;
-};
-
-/**
- * Greets a person by name
- * @param name - The name to greet
- * @returns A greeting message
- */
-export const greet = (name: string): string => {
-  return \`Hello, \${name}!\`;
-};
-EOL
-
-      mkdir -p "$DEST/public"
-      cat > "$DEST/index.html" <<EOL
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>$APP_NAME</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/index.tsx"></script>
-  </body>
-</html>
-EOL
-      # Vite config
-      cat > "$DEST/vite.config.ts" <<EOL
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()]
-});
-EOL
-
-      # Vitest config for React
-      cat > "$DEST/vitest.config.ts" <<EOL
-import { defineConfig } from 'vitest/config';
-
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/__tests__/setup.ts'],
-  },
-});
-EOL
-
-      # Test setup file
-      cat > "$DEST/src/__tests__/setup.ts" <<EOL
-import '@testing-library/jest-dom';
-EOL
-
-      # Create test folder and test file
-      mkdir -p "$DEST/src/__tests__"
-      cat > "$DEST/src/__tests__/utils.test.ts" <<EOL
-import { describe, it, expect } from 'vitest';
-import { add, greet } from '../utils';
-
-describe('$TS_NAME utils', () => {
-  describe('add', () => {
-    it('should add two positive numbers', () => {
-      expect(add(2, 3)).toBe(5);
-    });
-
-    it('should add negative numbers', () => {
-      expect(add(-1, -2)).toBe(-3);
-    });
-
-    it('should add zero', () => {
-      expect(add(5, 0)).toBe(5);
-    });
-  });
-
-  describe('greet', () => {
-    it('should greet a person by name', () => {
-      expect(greet('Alice')).toBe('Hello, Alice!');
-    });
-
-    it('should handle empty string', () => {
-      expect(greet('')).toBe('Hello, !');
-    });
-  });
-});
-EOL
-
-      # Create React component test
-      cat > "$DEST/src/__tests__/App.test.tsx" <<EOL
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import App from '../App';
-
-describe('App', () => {
-  it('renders the app title', () => {
-    render(<App />);
-    expect(screen.getByText(/Hello from $TS_NAME React app!/)).toBeInTheDocument();
-  });
-
-  it('displays the calculation result', () => {
-    render(<App />);
-    expect(screen.getByText('2 + 3 = 5')).toBeInTheDocument();
-  });
-
-  it('displays the greeting', () => {
-    render(<App />);
-    expect(screen.getByText('Hello, React User!')).toBeInTheDocument();
-  });
-});
-EOL
+      create_vite_app "$DEST" "$PKG_NAME" "$TS_NAME"
+      ;;
+    4)
+      create_nextjs_app "$DEST" "$PKG_NAME" "$TS_NAME"
       ;;
     *)
-      error "Invalid app type selection."
+      error "Invalid app type selection. Please choose 1-4."
       ;;
   esac
-
-  cat > "$DEST/tsconfig.json" <<EOL
-{
-  "extends": "../../tsconfig.base.json",
-  "include": ["src"]
-}
-EOL
 
   # Add scripts to root package.json
   add_package_scripts_to_root "$PKG_NAME" "app"
