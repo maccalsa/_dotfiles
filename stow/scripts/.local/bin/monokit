@@ -251,6 +251,29 @@ sanitize_for_typescript() {
   echo "$name" | sed 's/-\([a-z]\)/\U\1/g'
 }
 
+# Help function
+show_help() {
+  echo "🚀 Monokit - TypeScript Monorepo Management Tool"
+  echo "================================================"
+  echo
+  echo "Usage: monokit <command> [options]"
+  echo
+  echo "Commands:"
+  echo "  init <project-name>           Initialize a new monorepo"
+  echo "  add lib <name>                Add a new library"
+  echo "  add app <name>                Add a new application"
+  echo "  switch <pkg> <type> <mode>   Switch dependencies (local/remote)"
+  echo "  help, --help, -h             Show this help message"
+  echo
+  echo "Examples:"
+  echo "  monokit init my-project"
+  echo "  monokit add lib utils"
+  echo "  monokit add app web-app"
+  echo "  monokit switch utils lib local"
+  echo
+  echo "For more information, visit: https://github.com/logimos/monokit"
+}
+
 add_lib() {
   LIB_NAME=$3
   if [ -z "$LIB_NAME" ]; then
@@ -449,7 +472,7 @@ case "$COMMAND" in
     ;;
   switch)
     if [ -z "$TARGET" ] || [ -z "$TYPE" ] || [ -z "$MODE" ]; then
-      error "Usage: ./core-script.sh switch <target> <app|lib> <local|remote>"
+      error "Usage: monokit switch <target> <app|lib> <local|remote>"
     fi
     if [[ "$MODE" == "local" ]]; then
       switch_to_local
@@ -465,12 +488,17 @@ case "$COMMAND" in
      elif [[ "$2" == "app" ]]; then
       add_app "$@"
     else
-      error "Usage: ./core-script.sh add lib|app <name>"
+      error "Usage: monokit add lib|app <name>"
     fi
+    ;;
+  help|--help|-h)
+    show_help
+    ;;
+  "")
+    show_help
     ;;
   *)
     error "Unknown command: $COMMAND"
+    echo "Run 'monokit help' for usage information."
     ;;
 esac
-
-
