@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# ========= Config (can be overridden by flags) =========
+BACKUP_DIR="${BACKUP_DIR:-./repo-backups}"    # where zips & logs go
+DRY_RUN=true                                  # default to dry-run
+ARCHIVE_INSTEAD=false                         # if true, archive repos instead of deleting
+SLEEP_SECONDS=1                               # pause between destructive ops
+
+# ========= Helpers =========
+usage() {
+  cat <<'EOF'
+Usage:
+  backup_and_cleanup_repos.sh -f repos.txt [--no-dry-run] [--archive-instead] [--backup-dir DIR] [--sleep N]
+
+Where repos.txt contains one full repo name per line, e.g.:
+  myorg/old-repo-one
+  myorg/experiment-2021
+  myuser/scratchpad
+
+Flags:
+  -f, --file FILE           Input file with owner/repo per line (required)
+  --no-dry-run              Actually delete (or archive) repos after zipping
+  --archive-instead         Archive the repos (set archived=true) instead of deleting
+  --backup-dir DIR          Directory to store backups (default: ./repo-backups)
+  --sleep N                 Seconds to sleep between delete/archive ops (default: 1)
+  -h, --help                Show this help
+
+Requirements:
+  - gh (GitHub CLI) authenticated with sufficient permissions
+  - git
+  - zip
+  - sha256sum (or shasum fallback on macOS)
+EOF
+}
+
+log()   { printf '%s %s\n' "$(date +'%F %T')" "$*" | tee -a "$LOG_FILE"; }
+err()   { printf '%s [ERROR] %s\n' "$(date +'%F %T')" "$*" | tee -a "$LOG_FILE" >&2; }
+exists() { command -v "$1" >/dev/null 2>&1; }
+
+checksum_file() {
+  local f="$1"
+  if exists sha256sum; then
+    sha256sum "$f" | awk '{print $1}'
+  elif exists shasum; then
+    shasum -a 256 "$f" | awk '{print $1}'
+  else
+    echo "no-sha-tool"
+  fi
+}
+
+# ========= Parse args =========
+INPUT_FILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -f|--file) INPUT_FILE="$2"; shift 2;;
+    --no-dry-run) DRY_RUN=false; shift;;
+    --archive-instead) ARCHIVE_INSTEAD=true; shift;;
+    --backup-dir) BACKUP_DIR="$2"; shift 2;;
+    --sleep) SLEEP_SECONDS="$2"; shift 2;;
+    -h|--help) usage; exit 0;;
+    *) err "Unknown argument: $1"; usage; exit 2;;
+  esac
+done
+
+if [[ -z "$INPUT_FILE" ]]; then
+  err "Missing required -f/--file"
+  usage; exit 2
+fi
+if [[ ! -f "$INPUT_FILE" ]]; then
+  err "Input file not found: $INPUT_FILE"
+  exit 2
+fi
+
+# ========= Pre-flight checks =========
+for bin in gh git zip; do
+  if ! exists "$bin"; then
+    err "Required tool not found in PATH: $bin"
+    exit 2
+  fi
+done
+
+if ! gh auth status >/dev/null 2>&1; then
+  err "GitHub CLI not authenticated. Run: gh auth login"
+  exit 2
+fi
+
+mkdir -p "$BACKUP_DIR"/{zips,mirrors,logs}
+LOG_FILE="$BACKUP_DIR/logs/run_$(date +'%Y%m%d_%H%M%S').log"
+log "Starting repo backup & cleanup"
+log "Input file: $INPUT_FILE"
+log "Backup dir: $BACKUP_DIR"
+log "Mode: $( $DRY_RUN && echo 'DRY RUN' || echo 'LIVE' )"
+log "Action: $( $ARCHIVE_INSTEAD && echo 'ARCHIVE' || echo 'DELETE' )"
+log "Sleep seconds between destructive ops: $SLEEP_SECONDS"
+
+# ========= Process =========
+i=0
+while IFS= read -r full_name; do
+  # Skip blanks and comments
+  [[ -z "$full_name" || "$full_name" =~ ^\s*# ]] && continue
+
+  # Normalize like owner/repo
+  repo="${full_name//[$'\t\r\n ']/}"
+  if [[ ! "$repo" =~ .+/.+ ]]; then
+    err "Skipping invalid repo name (expect owner/repo): '$repo'"
+    continue
+  fi
+  i=$((i+1))
+  owner="${repo%%/*}"
+  name="${repo##*/}"
+
+  # Paths
+  mirror_dir="$BACKUP_DIR/mirrors/${owner}__${name}.git"  # .git suffix for mirror clarity
+  zip_path="$BACKUP_DIR/zips/${owner}__${name}_$(date +'%Y%m%d').zip"
+
+  log "[$i] Processing $repo"
+
+  # Clone mirror (full history)
+  if [[ -d "$mirror_dir" ]]; then
+    log "Mirror exists, skipping clone: $mirror_dir"
+  else
+    log "Cloning mirror..."
+    if ! gh repo clone "$repo" "$mirror_dir" -- --mirror >>"$LOG_FILE" 2>&1; then
+      err "Clone failed for $repo"
+      continue
+    fi
+  fi
+
+  tar_path="$BACKUP_DIR/zips/${owner}__${name}_$(date +'%Y%m%d').tar.gz"
+  if [[ -f "$tar_path" ]]; then
+    log "Tar already exists, skipping: $tar_path"
+  else
+    log "Tarring to: $tar_path"
+    if ! tar -C "$BACKUP_DIR/mirrors" -czf "$tar_path" "$(basename "$mirror_dir")"; then
+      err "Tar failed for $repo"
+      rm -f "$tar_path"
+      continue
+    fi
+  fi
+  cksum=$(checksum_file "$tar_path")
+  log "TAR checksum (sha256): $cksum"
+
+
+  # Destructive action
+  if $DRY_RUN; then
+    log "[DRY RUN] Would $([[ "$ARCHIVE_INSTEAD" == true ]] && echo 'archive' || echo 'delete') $repo"
+  else
+    if $ARCHIVE_INSTEAD; then
+      log "Archiving $repo (set archived=true)"
+      if gh repo edit "$repo" --archived true >>"$LOG_FILE" 2>&1; then
+        log "Archived: $repo"
+      else
+        err "Archive failed for $repo"
+      fi
+    else
+      log "Deleting $repo"
+      if gh repo delete "$repo" --confirm >>"$LOG_FILE" 2>&1; then
+        log "Deleted: $repo"
+      else
+        err "Delete failed for $repo"
+      fi
+    fi
+    sleep "$SLEEP_SECONDS"
+  fi
+
+  log "Done: $repo"
+  echo
+done < "$INPUT_FILE"
+
+log "All done. Logs: $LOG_FILE"

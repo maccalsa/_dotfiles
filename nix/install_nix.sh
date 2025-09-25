@@ -72,6 +72,8 @@ nix --extra-experimental-features 'nix-command flakes' profile install \
   nixpkgs#glow \
   nixpkgs#ripgrep \
   nixpkgs#espanco \
+  nixpkgs#gh \
+  nixpkgs#zip \
 
 echo "✅ Done installing Nix tools."
 
