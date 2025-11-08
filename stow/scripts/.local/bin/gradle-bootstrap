@@ -118,33 +118,6 @@ declare -A DEPENDENCY_CATEGORIES=(
   [integration]="Task Processing"
 )
 
-# Legacy arrays for backward compatibility
-declare -A SPRING_STARTERS=(
-  [1]="webflux"
-  [2]="data-r2dbc"
-  [3]="postgresql"
-  [4]="data-jpa"
-  [5]="security"
-  [6]="validation"
-  [7]="configuration-processor"
-  [8]="actuator"
-  [9]="lombok"
-  [10]="devtools"
-)
-
-declare -A SPRING_STARTER_NAMES=(
-  [1]="Spring WebFlux"
-  [2]="Spring Data R2DBC"
-  [3]="R2DBC PostgreSQL"
-  [4]="Spring Data JPA"
-  [5]="Spring Security"
-  [6]="Validation"
-  [7]="Configuration Processor"
-  [8]="Actuator"
-  [9]="Lombok"
-  [10]="DevTools"
-)
-
 # --------------------
 # Utility Functions
 # --------------------
@@ -338,20 +311,6 @@ display_spring_dependencies() {
   done
   
   echo "=================================================="
-  echo ""
-}
-
-display_spring_dependencies_simple() {
-  echo ""
-  echo "📚 Available Spring Boot Dependencies:"
-  echo "======================================"
-  # Iterate through the array in numerical order
-  for i in {1..10}; do
-    if [[ -n "${SPRING_STARTERS[$i]}" ]]; then
-      printf "  %2d. %s\n" "$i" "${SPRING_STARTER_NAMES[$i]}"
-    fi
-  done
-  echo "======================================"
   echo ""
 }
 
