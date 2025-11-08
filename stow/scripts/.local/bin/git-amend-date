@@ -1,0 +1,431 @@
+#!/bin/bash
+#
+# A script to amend commit dates, setting BOTH the Author and Committer dates.
+# Can amend a single commit (the last one) or multiple commits interactively.
+#
+# Usage: ./git_amend_date.sh           # Amend last commit
+#        ./git_amend_date.sh -n <num>  # Amend last N commits
+#        ./git_amend_date.sh -h|--help
+#
+# Prompts interactively for date/time components.
+# Press Enter to use default (current) value for any field.
+
+# --- Help/Usage Block ---
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  echo "Usage: ./git_amend_date.sh [OPTIONS]"
+  echo ""
+  echo "Amends commit Author and Committer dates."
+  echo ""
+  echo "Options:"
+  echo "  (no args)          Amend the last commit only"
+  echo "  -n <number>        Amend the last N commits (one by one)"
+  echo "  -h, --help         Show this help message"
+  echo ""
+  echo "The script will prompt you for each date/time component."
+  echo "Press Enter to use the current date/time value for any field."
+  echo ""
+  echo "Examples:"
+  echo "  ./git_amend_date.sh           # Amend last commit"
+  echo "  ./git_amend_date.sh -n 5      # Amend last 5 commits"
+  echo ""
+  echo "When processing multiple commits, you'll be prompted for each commit"
+  echo "starting from the oldest one."
+  exit 0
+fi
+
+# Function to validate and format a number with leading zero
+validate_and_format() {
+  local value=$1
+  local min=$2
+  local max=$3
+  local default=$4
+  local field_name=$5
+  
+  # Use default if empty
+  if [[ -z "$value" ]]; then
+    echo "$default"
+    return 0
+  fi
+  
+  # Check if it's a number
+  if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+    echo "Error: $field_name must be a number" >&2
+    return 1
+  fi
+  
+  # Check range
+  if [[ $value -lt $min || $value -gt $max ]]; then
+    echo "Error: $field_name must be between $min and $max" >&2
+    return 1
+  fi
+  
+  # Format with leading zero if needed (for 2-digit fields)
+  if [[ $max -lt 100 ]]; then
+    printf "%02d" "$value"
+  else
+    echo "$value"
+  fi
+}
+
+# Function to prompt for input with default
+prompt_with_default() {
+  local prompt_text=$1
+  local default_value=$2
+  local min=$3
+  local max=$4
+  local field_name=$5
+  
+  while true; do
+    read -p "$prompt_text [$default_value]: " input
+    # Use a temporary file to capture both stdout and stderr separately
+    local temp_file=$(mktemp)
+    result=$(validate_and_format "$input" "$min" "$max" "$default_value" "$field_name" 2>"$temp_file")
+    exit_code=$?
+    local error_msg=$(cat "$temp_file")
+    rm -f "$temp_file"
+    
+    if [[ $exit_code -eq 0 ]]; then
+      echo "$result"
+      return 0
+    else
+      # Show error message
+      echo "$error_msg" >&2
+    fi
+  done
+}
+
+# Function to prompt for date/time and return the date string
+prompt_for_date() {
+  local commit_hash=$1
+  local commit_msg=$2
+  local commit_num=$3
+  local total_commits=$4
+  
+  # Get current commit's date parts to use as defaults
+  local commit_date=$(git log -1 --format='%ai' "$commit_hash" 2>/dev/null)
+  if [[ -n "$commit_date" ]]; then
+    # Parse the date: "2025-01-15 10:30:45 -0500"
+    local year=$(echo "$commit_date" | cut -d' ' -f1 | cut -d'-' -f1)
+    local month=$(echo "$commit_date" | cut -d' ' -f1 | cut -d'-' -f2)
+    local day=$(echo "$commit_date" | cut -d' ' -f1 | cut -d'-' -f3)
+    local hour=$(echo "$commit_date" | cut -d' ' -f2 | cut -d':' -f1)
+    local minute=$(echo "$commit_date" | cut -d' ' -f2 | cut -d':' -f2)
+    local second=$(echo "$commit_date" | cut -d' ' -f2 | cut -d':' -f3)
+    local tz=$(echo "$commit_date" | cut -d' ' -f3)
+  else
+    # Fallback to current date
+    year=$(date +'%Y')
+    month=$(date +'%m')
+    day=$(date +'%d')
+    hour=$(date +'%H')
+    minute=$(date +'%M')
+    second=$(date +'%S')
+    tz=$(date +'%z')
+  fi
+  
+  # Show commit info
+  echo ""
+  if [[ -n "$commit_num" ]]; then
+    echo "=========================================="
+    echo "Commit $commit_num of $total_commits"
+    echo "=========================================="
+  fi
+  echo "Commit: $commit_hash"
+  echo "Message: $commit_msg"
+  echo "Current date: $(git log -1 --format='%ad' --date=iso "$commit_hash" 2>/dev/null)"
+  echo ""
+  echo "Enter new date/time (press Enter to keep current value):"
+  
+  # Prompt for each component
+  local new_day=$(prompt_with_default "Day" "$day" 1 31 "Day")
+  local new_month=$(prompt_with_default "Month" "$month" 1 12 "Month")
+  local new_year=$(prompt_with_default "Year" "$year" 1900 9999 "Year")
+  local new_hour=$(prompt_with_default "Hour (24-hour format)" "$hour" 0 23 "Hour")
+  local new_minute=$(prompt_with_default "Minute" "$minute" 0 59 "Minute")
+  local new_second=$(prompt_with_default "Second" "$second" 0 59 "Second")
+  
+  # Construct the final date string
+  echo "$new_year-$new_month-$new_day $new_hour:$new_minute:$new_second $tz"
+}
+
+# Function to amend a commit with a new date
+amend_commit_date() {
+  local date_string=$1
+  local commit_hash=$2
+  
+  # Export the environment variables
+  export GIT_COMMITTER_DATE="$date_string"
+  export GIT_AUTHOR_DATE="$date_string"
+  
+  # Amend the commit
+  if git commit --amend --no-edit --date="$date_string" >/dev/null 2>&1; then
+    return 0
+  else
+    unset GIT_AUTHOR_DATE
+    unset GIT_COMMITTER_DATE
+    return 1
+  fi
+}
+
+# Check if we're in a git repository
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+  echo "Error: Not in a git repository" >&2
+  exit 1
+fi
+
+# Check if there's a commit to amend
+if ! git rev-parse HEAD > /dev/null 2>&1; then
+  echo "Error: No commits found to amend" >&2
+  exit 1
+fi
+
+# Parse command line arguments
+NUM_COMMITS=""
+if [[ "$1" == "-n" ]]; then
+  if [[ -z "$2" ]]; then
+    echo "Error: -n requires a number" >&2
+    exit 1
+  fi
+  if ! [[ "$2" =~ ^[0-9]+$ ]] || [[ $2 -lt 1 ]]; then
+    echo "Error: Number of commits must be a positive integer" >&2
+    exit 1
+  fi
+  NUM_COMMITS=$2
+fi
+
+# Function to process a single commit
+process_single_commit() {
+  local commit_hash=$1
+  local commit_msg=$2
+  local commit_num=$3
+  local total_commits=$4
+  
+  # Get current commit author info
+  local author_name=$(git log -1 --format='%an' "$commit_hash" 2>/dev/null)
+  local author_email=$(git log -1 --format='%ae' "$commit_hash" 2>/dev/null)
+  
+  # Prompt for new date
+  local new_date=$(prompt_for_date "$commit_hash" "$commit_msg" "$commit_num" "$total_commits")
+  
+  # Format the date for display (more readable)
+  local display_date=$(date -d "$(echo "$new_date" | cut -d' ' -f1-2)" '+%B %d, %Y at %I:%M:%S %p' 2>/dev/null || \
+                       date -j -f "%Y-%m-%d %H:%M:%S" "$(echo "$new_date" | cut -d' ' -f1-2)" '+%B %d, %Y at %I:%M:%S %p' 2>/dev/null || \
+                       echo "$new_date")
+  
+  echo ""
+  echo "=========================================="
+  echo "This commit will be changed to be authored by"
+  echo "  $author_name <$author_email>"
+  echo "on"
+  echo "  $display_date"
+  echo "=========================================="
+  echo ""
+  
+  # Confirm before proceeding
+  read -p "Proceed with amending this commit? (y/N): " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "Skipping this commit."
+    return 1
+  fi
+  
+  # Amend the commit
+  echo ""
+  echo "Amending commit with date: $new_date"
+  if amend_commit_date "$new_date" "$commit_hash"; then
+    echo "Successfully amended commit dates."
+    echo ""
+    echo "Verification - Actual commit dates:"
+    echo "  Author date:   $(git log -1 --format='%ad' --date=iso)"
+    echo "  Committer date: $(git log -1 --format='%cd' --date=iso)"
+    unset GIT_AUTHOR_DATE
+    unset GIT_COMMITTER_DATE
+    return 0
+  else
+    echo "Error: Failed to amend commit." >&2
+    unset GIT_AUTHOR_DATE
+    unset GIT_COMMITTER_DATE
+    return 1
+  fi
+}
+
+# Main execution
+if [[ -z "$NUM_COMMITS" ]]; then
+  # Single commit mode (original behavior)
+  COMMIT_HASH=$(git rev-parse HEAD)
+  COMMIT_MSG=$(git log -1 --format='%s' HEAD)
+  
+  echo "Amend commit date/time"
+  echo "======================"
+  echo "Press Enter to use the current value (shown in brackets) for any field."
+  
+  process_single_commit "$COMMIT_HASH" "$COMMIT_MSG" "" ""
+else
+  # Multiple commits mode - use interactive rebase
+  TOTAL_COMMITS=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+  if [[ $NUM_COMMITS -gt $TOTAL_COMMITS ]]; then
+    echo "Warning: Requested $NUM_COMMITS commits, but only $TOTAL_COMMITS available." >&2
+    NUM_COMMITS=$TOTAL_COMMITS
+  fi
+  
+  echo "Rewriting dates for the last $NUM_COMMITS commit(s)"
+  echo "=================================================="
+  echo ""
+  echo "You will be prompted for each commit, starting from the oldest."
+  echo "Press Enter at any prompt to keep the current date value."
+  echo ""
+  
+  # Get list of commit hashes and messages (oldest first)
+  mapfile -t COMMIT_HASHES < <(git log -n "$NUM_COMMITS" --reverse --format='%H')
+  mapfile -t COMMIT_MSGS < <(git log -n "$NUM_COMMITS" --reverse --format='%s')
+  
+  # Store original HEAD and branch name for safety
+  ORIGINAL_HEAD=$(git rev-parse HEAD)
+  ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  
+  # Check if we have uncommitted changes
+  if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    echo "Warning: You have uncommitted changes. They will be stashed temporarily." >&2
+    read -p "Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+      echo "Aborted."
+      exit 0
+    fi
+    git stash push -m "Temporary stash for git_amend_date.sh" >/dev/null 2>&1
+    STASHED=true
+  else
+    STASHED=false
+  fi
+  
+  # Get the base commit (the one before the range we want to modify)
+  if [[ $NUM_COMMITS -eq $TOTAL_COMMITS ]]; then
+    # All commits - start from root
+    BASE_COMMIT=$(git rev-list --max-parents=0 HEAD 2>/dev/null | head -1)
+  else
+    BASE_COMMIT=$(git rev-parse HEAD~$NUM_COMMITS 2>/dev/null)
+  fi
+  
+  # Create a temporary file to store dates indexed by commit message (first line)
+  # We use commit message because it's stable during rebase, unlike hashes
+  DATE_FILE=$(mktemp)
+  trap "cleanup_on_exit" INT TERM EXIT
+  
+  # Cleanup function for trap (on error/interrupt)
+  cleanup_on_exit() {
+    rm -f "$DATE_FILE" "$AMEND_HELPER" "$REBASE_TODO" "$SEQUENCE_EDITOR_SCRIPT" 2>/dev/null
+    git rebase --abort 2>/dev/null || true
+    unset GIT_SEQUENCE_EDITOR 2>/dev/null || true
+    if [[ "$STASHED" == "true" ]]; then
+      git stash pop >/dev/null 2>&1 || true
+    fi
+  }
+  
+  # First, collect all the dates from the user
+  declare -A COMMIT_DATES
+  for i in "${!COMMIT_HASHES[@]}"; do
+    commit_idx=$((i + 1))
+    commit_hash="${COMMIT_HASHES[$i]}"
+    commit_msg="${COMMIT_MSGS[$i]}"
+    
+    echo ""
+    echo "=========================================="
+    echo "Commit $commit_idx of $NUM_COMMITS"
+    echo "=========================================="
+    
+    new_date=$(prompt_for_date "$commit_hash" "$commit_msg" "$commit_idx" "$NUM_COMMITS")
+    COMMIT_DATES["$commit_hash"]="$new_date"
+    
+    # Store in file for later use (commit message -> date mapping)
+    # Escape the message for safe storage
+    safe_msg=$(echo "$commit_msg" | sed 's/|/\\|/g')
+    echo "$safe_msg|$new_date" >> "$DATE_FILE"
+  done
+  
+  echo ""
+  echo "=========================================="
+  echo "Starting rebase to apply date changes..."
+  echo "=========================================="
+  echo ""
+  
+  # Create a helper script that will be used during rebase
+  # It matches commits by their commit message (first line)
+  AMEND_HELPER=$(mktemp)
+  cat > "$AMEND_HELPER" <<'HELPER_EOF'
+#!/bin/bash
+# Helper script called during rebase for each commit
+DATE_FILE="$1"
+
+# Get the current commit's message (first line only)
+CURRENT_MSG=$(git log -1 --format='%s' HEAD)
+
+# Look up the date for this commit by matching the commit message
+# Use a simple line-by-line search
+NEW_DATE=""
+while IFS='|' read -r msg date; do
+  # Unescape the message
+  msg=$(echo "$msg" | sed 's/\\|/|/g')
+  if [[ "$msg" == "$CURRENT_MSG" ]]; then
+    NEW_DATE="$date"
+    break
+  fi
+done < "$DATE_FILE"
+
+if [[ -n "$NEW_DATE" ]]; then
+  export GIT_COMMITTER_DATE="$NEW_DATE"
+  export GIT_AUTHOR_DATE="$NEW_DATE"
+  git commit --amend --no-edit --date="$NEW_DATE" >/dev/null 2>&1
+  unset GIT_AUTHOR_DATE
+  unset GIT_COMMITTER_DATE
+fi
+HELPER_EOF
+  chmod +x "$AMEND_HELPER"
+  
+  # Create rebase todo list with exec commands
+  REBASE_TODO=$(mktemp)
+  for i in "${!COMMIT_HASHES[@]}"; do
+    commit_hash="${COMMIT_HASHES[$i]}"
+    echo "pick $(git rev-parse --short "$commit_hash")" >> "$REBASE_TODO"
+    echo "exec \"$AMEND_HELPER\" \"$DATE_FILE\"" >> "$REBASE_TODO"
+  done
+  
+  # Use GIT_SEQUENCE_EDITOR to automate the rebase
+  # We need to copy our todo list to the file git expects
+  SEQUENCE_EDITOR_SCRIPT=$(mktemp)
+  cat > "$SEQUENCE_EDITOR_SCRIPT" <<EDITOR_EOF
+#!/bin/bash
+cp "$REBASE_TODO" "\$1"
+EDITOR_EOF
+  chmod +x "$SEQUENCE_EDITOR_SCRIPT"
+  export GIT_SEQUENCE_EDITOR="$SEQUENCE_EDITOR_SCRIPT"
+  
+  # Start the rebase
+  if git rebase -i "$BASE_COMMIT" >/dev/null 2>&1; then
+    echo "Successfully rebased $NUM_COMMITS commit(s) with new dates!"
+    echo ""
+    echo "Verification - New commit dates:"
+    git log -n "$NUM_COMMITS" --format="  %h - %ad - %s" --date=iso
+  else
+    REBASE_STATUS=$?
+    if git rev-parse --git-dir/rebase-merge >/dev/null 2>&1 || git rev-parse --git-dir/rebase-apply >/dev/null 2>&1; then
+      echo "Rebase in progress. You may need to resolve conflicts manually." >&2
+      echo "Use 'git rebase --continue' after resolving, or 'git rebase --abort' to cancel." >&2
+    else
+      echo "Error during rebase (exit code: $REBASE_STATUS)." >&2
+    fi
+    rm -f "$AMEND_HELPER" "$REBASE_TODO" "$SEQUENCE_EDITOR_SCRIPT"
+    trap - INT TERM EXIT
+    exit 1
+  fi
+  
+  # Clean up temporary files
+  rm -f "$AMEND_HELPER" "$REBASE_TODO" "$DATE_FILE" "$SEQUENCE_EDITOR_SCRIPT"
+  unset GIT_SEQUENCE_EDITOR
+  trap - INT TERM EXIT
+  
+  # Restore stashed changes if any
+  if [[ "$STASHED" == "true" ]]; then
+    git stash pop >/dev/null 2>&1 || true
+  fi
+  
+  echo ""
+  echo "All done!"
+fi
