@@ -1,4 +1,5 @@
 local U = {}
+local logger = require('keycoach.logger')
 
 local function place_top_right(buf, width, height)
   local win = vim.api.nvim_get_current_win()
@@ -31,6 +32,8 @@ end
 
 function U.hint(text, subtitle)
   if type(text) ~= 'string' then return end
+  
+  logger.log('UI', 'Showing hint', { text = text, subtitle = subtitle })
   
   local lines = {}
   
@@ -67,10 +70,13 @@ function U.hint(text, subtitle)
   vim.api.nvim_set_option_value('winblend', 20, { win = win })
   vim.api.nvim_set_option_value('wrap', false, { win = win })
   
+  logger.log('UI', 'Hint window created', { width = width, height = height, win = win })
+  
   -- Auto-close after a short time
   vim.defer_fn(function()
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, true)
+      logger.log('UI', 'Hint window closed')
     end
   end, 2500) -- 2.5 seconds
 end

@@ -394,10 +394,16 @@ return {
     name = 'keycoach',
     lazy = false, -- Load immediately on startup
     config = function()
-      -- Auto-enable after Neovim fully initializes
-      vim.schedule(function()
-        require('keycoach').enable()
-      end)
+      -- Setup with default config (enabled=true, logging_enabled=false)
+      -- You can customize this by calling require('keycoach').setup({ ... })
+      require('keycoach').setup({
+        enabled = true, -- KeyCoach enabled by default
+        logging_enabled = false, -- Logging disabled by default (to avoid interrupting editing)
+        logging_notify = false, -- Don't show notifications for logs
+        hint_cooldown = 2000, -- 2 seconds between hints
+      })
+      -- Initialize (will auto-enable if config.enabled is true)
+      require('keycoach')._init()
     end,
   },
 

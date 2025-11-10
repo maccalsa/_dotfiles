@@ -1,4 +1,5 @@
 local R = {}
+local logger = require('keycoach.logger')
 
 -- Utility to count a tail run of keys matching a predicate
 local function tail_run(keys, pred)
@@ -38,6 +39,7 @@ local function rule_x_spam(keys, before, after)
   local n = tail_run(keys, function(k)
     return k == 'x' or k == 'dl' or k == '\127' -- '\127' = backspace
   end)
+  logger.log('RULE', 'rule_x_spam evaluated', { tail_run = n, threshold = 3, matched = n >= 3 })
   if n >= 3 then
     return {
       key = 'rule_x_spam',
@@ -50,10 +52,75 @@ end
 
 -- Rule 2: Excessive h/l walking → suggest f/t/w/b
 local function rule_hl_walk(keys, before, after)
-  local n = tail_run(keys, function(k)
-    return k == 'h' or k == 'l' or k == '\u{001b}[D' or k == '\u{001b}[C' -- arrow keys
+  -- Count h/l keys (including arrow keys which come as escape sequences)
+  local h_count = 0
+  local l_count = 0
+  local consecutive_hl = 0
+  local max_consecutive = 0
+  
+  for i, key_entry in ipairs(keys) do
+    local k = key_entry.key
+    -- Check for h, l
+    local is_h = (k == 'h')
+    local is_l = (k == 'l')
+    
+    -- Arrow keys come as escape sequences
+    -- Left = \x1b[D, Right = \x1b[C
+    -- The weird characters in logs (�kd, �ku) are likely these sequences
+    local first_byte = k:byte(1)
+    local is_left_arrow = false
+    local is_right_arrow = false
+    
+    if first_byte == 27 then
+      -- It's an escape sequence, check for arrow patterns
+      if k:find('%[D') or k:find('OD') then
+        is_left_arrow = true
+      elseif k:find('%[C') or k:find('OC') then
+        is_right_arrow = true
+      end
+    elseif k:match('^%[D') then
+      is_left_arrow = true
+    elseif k:match('^%[C') then
+      is_right_arrow = true
+    end
+    
+    if is_h or is_left_arrow then
+      h_count = h_count + 1
+      consecutive_hl = consecutive_hl + 1
+      max_consecutive = math.max(max_consecutive, consecutive_hl)
+    elseif is_l or is_right_arrow then
+      l_count = l_count + 1
+      consecutive_hl = consecutive_hl + 1
+      max_consecutive = math.max(max_consecutive, consecutive_hl)
+    else
+      -- Reset consecutive count for non-movement keys
+      -- But don't reset for command mode (:) or other navigation
+      if k ~= ':' and k ~= '<CR>' and not (first_byte == 27) then
+        consecutive_hl = 0
+      end
+    end
+  end
+  
+  -- Also check tail run as fallback
+  local tail_n = tail_run(keys, function(k)
+    return k == 'h' or k == 'l'
   end)
-  if n >= 6 then
+  
+  local total_hl = h_count + l_count
+  -- Match if: 6+ consecutive h/l, 6+ tail run, or 10+ total h/l keys
+  local should_match = max_consecutive >= 6 or tail_n >= 6 or total_hl >= 10
+  
+  logger.log('RULE', 'rule_hl_walk evaluated', {
+    h_count = h_count,
+    l_count = l_count,
+    total_hl = total_hl,
+    max_consecutive = max_consecutive,
+    tail_run = tail_n,
+    threshold = 6,
+    matched = should_match,
+  })
+  
+  if should_match then
     return {
       key = 'rule_hl_walk',
       score = 8,
@@ -322,16 +389,39 @@ local RULES = {
 }
 
 function R.suggest(keys, before, after)
-  if not keys or #keys == 0 then return nil end
-  if not before or not after then return nil end
+  if not keys or #keys == 0 then
+    logger.log('RULES', 'No keys to evaluate')
+    return nil
+  end
+  if not before or not after then
+    logger.log('RULES', 'Missing before/after snapshots', { has_before = before ~= nil, has_after = after ~= nil })
+    return nil
+  end
+  
+  logger.log('RULES', 'Evaluating all rules', {
+    num_rules = #RULES,
+    num_keys = #keys,
+    before_lines = #before.lines,
+    after_lines = #after.lines,
+  })
   
   local best = nil
-  for _, rule in ipairs(RULES) do
+  local evaluated = {}
+  for i, rule in ipairs(RULES) do
+    local rule_name = RULES[i] and tostring(RULES[i]):match('function: (.+)') or ('rule_' .. i)
     local sug = rule(keys, before, after)
+    evaluated[rule_name] = sug ~= nil
     if sug and (not best or sug.score > best.score) then
       best = sug
+      logger.log('RULES', 'New best suggestion', { rule = rule_name, score = sug.score })
     end
   end
+  
+  logger.log('RULES', 'Rule evaluation complete', {
+    best_rule = best and best.key or nil,
+    best_score = best and best.score or nil,
+    evaluated = evaluated,
+  })
   
   return best
 end
