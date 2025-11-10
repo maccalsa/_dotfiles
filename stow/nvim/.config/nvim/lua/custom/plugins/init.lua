@@ -345,14 +345,14 @@ return {
       vim.keymap.set('n', '<leader>ff', vim.lsp.buf.format, {})
     end,
   },
-  {
-    'stevearc/oil.nvim',
-    config = function()
-      local oil = require 'oil'
-      oil.setup()
-      vim.keymap.set('n', '-', oil.toggle_float, {})
-    end,
-  },
+  -- {
+  --   'stevearc/oil.nvim',
+  --   config = function()
+  --     local oil = require 'oil'
+  --     oil.setup()
+  --     vim.keymap.set('n', '-', oil.toggle_float, {})
+  --   end,
+  -- },
   {
     'kdheepak/lazygit.nvim',
     cmd = {
@@ -385,6 +385,19 @@ return {
       if options ~= nil then
         require('alpha').setup(options)
       end
+    end,
+  },
+  {
+    -- KeyCoach: Learn Vim motions by observing your editing patterns
+    -- Local plugin - loads from lua/keycoach/ and plugin/keycoach.lua
+    dir = vim.fn.stdpath('config'),
+    name = 'keycoach',
+    lazy = false, -- Load immediately on startup
+    config = function()
+      -- Auto-enable after Neovim fully initializes
+      vim.schedule(function()
+        require('keycoach').enable()
+      end)
     end,
   },
 
