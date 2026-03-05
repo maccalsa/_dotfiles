@@ -11,27 +11,26 @@
 # Press Enter to use default (current) value for any field.
 
 # --- Help/Usage Block ---
-if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-  echo "Usage: ./git_amend_date.sh [OPTIONS]"
-  echo ""
-  echo "Amends commit Author and Committer dates."
-  echo ""
-  echo "Options:"
-  echo "  (no args)          Amend the last commit only"
-  echo "  -n <number>        Amend the last N commits (one by one)"
-  echo "  -h, --help         Show this help message"
-  echo ""
-  echo "The script will prompt you for each date/time component."
-  echo "Press Enter to use the current date/time value for any field."
-  echo ""
-  echo "Examples:"
-  echo "  ./git_amend_date.sh           # Amend last commit"
-  echo "  ./git_amend_date.sh -n 5      # Amend last 5 commits"
-  echo ""
-  echo "When processing multiple commits, you'll be prompted for each commit"
-  echo "starting from the oldest one."
+usage() {
+  cat <<'EOF'
+Usage: x_git_amend_date [OPTIONS]
+
+Amend Author and Committer dates on commits.
+
+Options:
+  (no args)       Amend last commit (interactive)
+  -n N            Amend last N commits (interactive, oldest first)
+  -d DATE         Set last commit to DATE (non-interactive). Format: YYYY-MM-DD HH:MM:SS
+  -h, --help      Show this help
+
+Examples:
+  x_git_amend_date              # Interactive: last commit
+  x_git_amend_date -n 5         # Interactive: last 5 commits
+  x_git_amend_date -d "2024-01-15 10:00:00"   # Non-interactive: last commit
+EOF
   exit 0
-fi
+}
+[[ "$1" == "-h" || "$1" == "--help" ]] && usage
 
 # Function to validate and format a number with leading zero
 validate_and_format() {
@@ -181,16 +180,54 @@ fi
 
 # Parse command line arguments
 NUM_COMMITS=""
-if [[ "$1" == "-n" ]]; then
-  if [[ -z "$2" ]]; then
-    echo "Error: -n requires a number" >&2
+DATE_OVERRIDE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -n)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: -n requires a number" >&2
+        exit 1
+      fi
+      if ! [[ "$2" =~ ^[0-9]+$ ]] || [[ $2 -lt 1 ]]; then
+        echo "Error: Number of commits must be a positive integer" >&2
+        exit 1
+      fi
+      NUM_COMMITS=$2
+      shift 2
+      ;;
+    -d)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: -d requires a date (YYYY-MM-DD HH:MM:SS)" >&2
+        exit 1
+      fi
+      DATE_OVERRIDE=$2
+      shift 2
+      ;;
+    *)
+      echo "Error: Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Non-interactive: -d for last commit only
+if [[ -n "$DATE_OVERRIDE" ]]; then
+  if [[ -n "$NUM_COMMITS" ]]; then
+    echo "Error: -d and -n cannot be used together" >&2
     exit 1
   fi
-  if ! [[ "$2" =~ ^[0-9]+$ ]] || [[ $2 -lt 1 ]]; then
-    echo "Error: Number of commits must be a positive integer" >&2
+  COMMIT_HASH=$(git rev-parse HEAD)
+  # Append timezone if not present (expect "date time" or "date time tz")
+  if [[ $(echo "$DATE_OVERRIDE" | wc -w) -lt 3 ]]; then
+    DATE_OVERRIDE="$DATE_OVERRIDE $(date +%z)"
+  fi
+  if amend_commit_date "$DATE_OVERRIDE" "$COMMIT_HASH"; then
+    echo "Amended last commit to: $DATE_OVERRIDE"
+    exit 0
+  else
+    echo "Error: Failed to amend commit" >&2
     exit 1
   fi
-  NUM_COMMITS=$2
 fi
 
 # Function to process a single commit
@@ -290,7 +327,7 @@ else
       echo "Aborted."
       exit 0
     fi
-    git stash push -m "Temporary stash for git_amend_date.sh" >/dev/null 2>&1
+    git stash push -m "Temporary stash for x_git_amend_date" >/dev/null 2>&1
     STASHED=true
   else
     STASHED=false

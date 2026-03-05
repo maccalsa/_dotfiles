@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# x_cert_check - Check SSL cert expiry and SANs for a domain
+# Usage: x_cert_check DOMAIN [PORT]
+
+usage() {
+    cat <<'EOF'
+Usage: x_cert_check DOMAIN [PORT]
+
+  Checks SSL cert for DOMAIN. PORT defaults to 443.
+  Shows expiry date and Subject Alternative Names.
+EOF
+    exit 0
+}
+
+cmd_check() {
+    local domain="$1"
+    local port="${2:-443}"
+    [[ -z "$domain" ]] && { echo "Domain required."; usage; }
+    command -v openssl &>/dev/null || { echo "openssl required."; exit 1; }
+
+    echo "Checking $domain:$port"
+    echo "---"
+    echo | openssl s_client -servername "$domain" -connect "${domain}:${port}" 2>/dev/null \
+        | openssl x509 -noout -dates -subject -ext subjectAltName 2>/dev/null \
+        || echo "Connection failed. Check domain and port."
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    "") echo "Domain required."; usage ;;
+    *) cmd_check "$1" "$2" ;;
+esac

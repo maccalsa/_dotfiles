@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# x_docker_run - Interactive Docker run with common flags
+# Usage: x_docker_run IMAGE [OPTIONS]
+
+usage() {
+    cat <<'EOF'
+Usage: x_docker_run IMAGE [OPTIONS]
+
+  Builds a docker run command with common flags. Prompts for:
+    - Port mapping (e.g. 8080:80)
+    - Volume mount (host:container)
+    - Environment vars
+    - Network (host/bridge)
+    - Interactive + TTY
+
+  Or pass options directly: x_docker_run nginx -p 8080:80 -v /data:/app
+
+  Examples:
+    x_docker_run nginx
+    x_docker_run postgres:16 -e POSTGRES_PASSWORD=secret -p 5432:5432
+EOF
+    exit 0
+}
+
+check_docker() {
+    command -v docker &>/dev/null || { echo "Docker not found."; exit 1; }
+}
+
+run_interactive() {
+    local image="$1"
+    shift
+    local args=("$@")
+    [[ -z "$image" ]] && { echo "Image required."; usage; }
+    [[ ${#args[@]} -gt 0 ]] && { exec docker run -it "${args[@]}" "$image"; }
+
+    local run_args=(-it)
+    read -rp "Port mapping (e.g. 8080:80, empty to skip): " port
+    [[ -n "$port" ]] && run_args+=(-p "$port")
+    read -rp "Volume (host:container, empty to skip): " vol
+    [[ -n "$vol" ]] && run_args+=(-v "$vol")
+    read -rp "Env var (KEY=val, empty to skip): " env
+    [[ -n "$env" ]] && run_args+=(-e "$env")
+    read -rp "Network (host/bridge, empty=default): " net
+    [[ "$net" == "host" ]] && run_args+=(--network host)
+
+    echo "Running: docker run ${run_args[*]} $image"
+    exec docker run "${run_args[@]}" "$image"
+}
+
+check_docker
+case "${1:-}" in
+    -h|--help) usage ;;
+    "") echo "Image required."; usage ;;
+    *)  run_interactive "$1" "${@:2}" ;;
+esac

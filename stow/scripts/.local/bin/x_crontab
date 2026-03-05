@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# x_crontab - Crontab manager (list, add, delete)
+# Usage: x_crontab [list|add|delete]   or run with no args for interactive menu
+
+usage() {
+    cat <<'EOF'
+Usage: x_crontab [COMMAND] [ARGS]
+
+  list              List all crontab entries (default)
+  add [ENTRY]        Add entry. If ENTRY omitted, prompt interactively.
+                     Example: x_crontab add "0 9 * * * /path/to/script"
+  delete [ENTRY]     Delete matching entry. If omitted, prompt interactively.
+  menu              Interactive menu (default when no args)
+
+Run with no args for interactive menu.
+EOF
+    exit 0
+}
+
+cmd_list() {
+    echo "Current crontab entries:"
+    crontab -l 2>/dev/null || echo "(no crontab)"
+}
+
+cmd_add() {
+    local entry="$1"
+    if [[ -z "$entry" ]]; then
+        echo "Enter schedule and command (e.g. * * * * * /path/to/command)"
+        read -rp "Entry: " entry
+        [[ -z "$entry" ]] && { echo "Aborted."; exit 1; }
+    fi
+    (crontab -l 2>/dev/null; echo "$entry") | crontab -
+    echo "Added."
+}
+
+cmd_delete() {
+    local entry="$1"
+    if [[ -z "$entry" ]]; then
+        echo "Current crontab entries:"
+        crontab -l 2>/dev/null || { echo "(no crontab)"; exit 1; }
+        echo ""
+        read -rp "Entry to delete (exact match): " entry
+        [[ -z "$entry" ]] && { echo "Aborted."; exit 1; }
+        read -rp "Delete this entry? (y/n): " confirm
+        [[ "$confirm" != [Yy]* ]] && { echo "Aborted."; exit 0; }
+    fi
+    crontab -l 2>/dev/null | grep -vFx -- "$entry" | crontab -
+    echo "Deleted."
+}
+
+run_menu() {
+    while true; do
+        echo ""
+        echo "1) List entries"
+        echo "2) Add entry"
+        echo "3) Delete entry"
+        echo "4) Exit"
+        read -rp "Choice: " choice
+        case "$choice" in
+            1) cmd_list ;;
+            2) cmd_add ;;
+            3) cmd_delete ;;
+            4) exit 0 ;;
+            *) echo "Invalid." ;;
+        esac
+    done
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    list)      cmd_list ;;
+    add)       cmd_add "$2" ;;
+    delete)    cmd_delete "$2" ;;
+    menu|"")  cmd_list; run_menu ;;
+    *)         echo "Unknown: $1"; usage ;;
+esac

@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# x_docker_clean - Prune Docker images, containers, volumes
+# Usage: x_docker_clean [all|images|containers|volumes]   or menu
+
+usage() {
+    cat <<'EOF'
+Usage: x_docker_clean [COMMAND]
+
+  all         Prune everything (containers, images, volumes, networks)
+  images      Remove dangling images
+  containers  Remove stopped containers
+  volumes     Remove unused volumes
+  networks    Remove unused networks
+
+  With -f/--force, skip confirmation. Default: prompt before prune.
+EOF
+    exit 0
+}
+
+check_docker() {
+    command -v docker &>/dev/null || { echo "Docker not found."; exit 1; }
+}
+
+do_prune() {
+    local what="$1"
+    local force="$2"
+    if [[ "$force" != "-f" && "$force" != "--force" ]]; then
+        read -rp "Prune $what? (y/n): " confirm
+        [[ "$confirm" != [Yy]* ]] && { echo "Aborted."; exit 0; }
+    fi
+    case "$what" in
+        all)        docker system prune -a ;;
+        images)     docker image prune -a ;;
+        containers) docker container prune ;;
+        volumes)    docker volume prune ;;
+        networks)   docker network prune ;;
+        *)          echo "Unknown: $what"; usage ;;
+    esac
+    echo "Done."
+}
+
+check_docker
+case "${1:-}" in
+    -h|--help) usage ;;
+    -f|--force) do_prune "${2:-all}" "$1" ;;
+    all|images|containers|volumes|networks) do_prune "$1" "$2" ;;
+    menu|"")
+        echo "1) Prune stopped containers"
+        echo "2) Prune dangling images"
+        echo "3) Prune all images"
+        echo "4) Prune unused volumes"
+        echo "5) Prune everything (system prune -a)"
+        read -rp "Choice: " c
+        case "$c" in
+            1) do_prune containers ;;
+            2) docker image prune ;;
+            3) do_prune images ;;
+            4) do_prune volumes ;;
+            5) do_prune all ;;
+            *) echo "Invalid."; exit 1 ;;
+        esac
+        ;;
+    *) echo "Unknown: $1"; usage ;;
+esac

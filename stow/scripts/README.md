@@ -1,18 +1,28 @@
-# Phoenix Bootstrap Script
+# Personal Toolset (x_ scripts)
+
+A collection of bash scripts for project bootstrapping, system utilities, and development workflows. All tools use the `x_` prefix and live in `~/.local/bin`.
+
+**Quick start:** Run `x_` to list all tools. Run `x_install` to add `~/.local/bin` to PATH.
+
+See [STRUCTURE.md](STRUCTURE.md) for the full layout and rename mapping.
+
+---
+
+# Phoenix Bootstrap (x_phoenix_create / x_phoenix_enhance)
 
 A comprehensive, modular bash script that creates Phoenix applications with popular ecosystem libraries and proper bootstrapping.
 
 ## 🏗️ Architecture
 
-The script is now organized into modular components for better maintainability:
+The Phoenix scripts are organized into modular components:
 
 ```
 .local/bin/
 ├── _common.sh              # Shared utilities and functions
 ├── _phoenix.sh             # Core Phoenix application setup
 ├── _oban.sh                # Oban background jobs setup
-├── create_phoenix_app.sh   # Main orchestrator script
-└── enhance_phoenix_app.sh  # Enhance existing projects
+├── x_phoenix_create        # Main orchestrator script
+└── x_phoenix_enhance       # Enhance existing projects
 ```
 
 ### **Benefits of Modular Architecture**
@@ -74,20 +84,13 @@ my_app/
 
 ### **Create New Project**
 ```bash
-# Make the scripts executable
-chmod +x .local/bin/*.sh
-
-# Create a new Phoenix project
-.local/bin/create_phoenix_app.sh
+x_phoenix_create
 ```
 
 ### **Enhance Existing Project**
 ```bash
-# Navigate to your Phoenix project directory
 cd your_phoenix_project
-
-# Enhance the existing project
-.local/bin/enhance_phoenix_app.sh
+x_phoenix_enhance
 ```
 
 ## 🔧 Module Structure
@@ -113,12 +116,12 @@ cd your_phoenix_project
 - Worker creation
 - Web dashboard setup
 
-### **`create_phoenix_app.sh` - Main Orchestrator**
+### **`x_phoenix_create` - Main Orchestrator**
 - Sources all modules
 - Coordinates the setup process
 - Manages component execution order
 
-### **`enhance_phoenix_app.sh` - Project Enhancement**
+### **`x_phoenix_enhance` - Project Enhancement**
 - Detects existing Phoenix projects
 - Identifies already installed dependencies
 - Adds new components to existing projects
@@ -176,7 +179,7 @@ setup_your_component() {
 
 ### **Step 2: Add to Main Script**
 
-In `create_phoenix_app.sh`:
+In `x_phoenix_create`:
 
 ```bash
 # Source your component
@@ -215,7 +218,7 @@ In `build_dependency_lines()`:
 
 ### **Step 5: Add to Enhancement Script**
 
-In `enhance_phoenix_app.sh`, add to `get_existing_dependencies()`:
+In `x_phoenix_enhance`, add to `get_existing_dependencies()`:
 
 ```bash
 if grep -q ":your_component" mix.exs; then

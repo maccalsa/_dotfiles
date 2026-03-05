@@ -1,0 +1,1 @@
+stow/scripts/nextjs-bootstrap.sh

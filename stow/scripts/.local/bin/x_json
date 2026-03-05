@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# x_json - Pretty-print JSON from stdin or file
+# Usage: x_json [FILE]   or pipe JSON to stdin
+
+usage() {
+    cat <<'EOF'
+Usage: x_json [FILE]
+
+  Pretty-prints JSON. Uses jq if available, else python.
+
+  Examples:
+    cat config.json | x_json
+    x_json config.json
+    curl -s https://api.example.com | x_json
+EOF
+    exit 0
+}
+
+if command -v jq &>/dev/null; then
+    json_cmd() { jq '.' "$@"; }
+elif command -v python3 &>/dev/null; then
+    json_cmd() {
+        if [[ -n "$1" ]]; then
+            python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])), indent=2))" "$1"
+        else
+            python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin), indent=2))"
+        fi
+    }
+else
+    echo "Need jq or python3."; exit 1
+fi
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    "")
+        json_cmd
+        ;;
+    *)
+        json_cmd "$1"
+        ;;
+esac

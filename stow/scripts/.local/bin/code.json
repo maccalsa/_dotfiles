@@ -1,0 +1,224 @@
+[
+    {
+        "code": "web",
+        "title": "Spring Web (Tomcat)",
+        "description": "Classic Spring MVC for building web applications and REST services.",
+        "category": "Web"
+    },
+    {
+        "code": "webflux",
+        "title": "Spring Reactive Web (Netty)",
+        "description": "Reactive web framework for non-blocking, event-driven applications.",
+        "category": "Web"
+    },
+    {
+        "code": "springdoc-openapi-starter-webmvc-ui",
+        "title": "SpringDoc OpenAPI (MVC + Swagger‑UI)",
+        "description": "Auto‑generate OpenAPI 3 docs & Swagger UI for Spring MVC applications.",
+        "category": "Documentation"
+    },
+    {
+        "code": "springdoc-openapi-starter-webflux-ui",
+        "title": "SpringDoc OpenAPI (WebFlux + Swagger‑UI)",
+        "description": "Auto‑generate OpenAPI 3 docs & Swagger UI for Spring WebFlux applications.",
+        "category": "Documentation"
+    },
+    {
+        "code": "rest-repositories",
+        "title": "Spring Data REST",
+        "description": "Creates hypermedia-driven REST APIs from Spring Data repositories.",
+        "category": "Data"
+    },
+    {
+        "code": "data-jpa",
+        "title": "Spring Data JPA",
+        "description": "Simplifies JPA-based data access layers.",
+        "category": "Data"
+    },
+    {
+        "code": "jdbc",
+        "title": "JDBC",
+        "description": "Classic JDBC support for relational databases.",
+        "category": "Data"
+    },
+    {
+        "code": "r2dbc",
+        "title": "R2DBC",
+        "description": "Reactive relational database connectivity.",
+        "category": "Data"
+    },
+    {
+        "code": "data-mongodb",
+        "title": "Spring Data MongoDB",
+        "description": "Support for reactive and blocking MongoDB drivers.",
+        "category": "Data"
+    },
+    {
+        "code": "data-redis",
+        "title": "Spring Data Redis",
+        "description": "Redis key–value support.",
+        "category": "Data"
+    },
+    {
+        "code": "data-elasticsearch",
+        "title": "Spring Data Elasticsearch",
+        "description": "Integration with Elasticsearch.",
+        "category": "Data"
+    },
+    {
+        "code": "cloud-eureka",
+        "title": "Spring Cloud Eureka",
+        "description": "Service discovery using Netflix Eureka.",
+        "category": "Cloud"
+    },
+    {
+        "code": "cloud-config-client",
+        "title": "Spring Cloud Config Client",
+        "description": "Externalized configuration management.",
+        "category": "Cloud"
+    },
+    {
+        "code": "cloud-gateway",
+        "title": "Spring Cloud Gateway",
+        "description": "API gateway built on Spring WebFlux.",
+        "category": "Cloud"
+    },
+    {
+        "code": "amqp",
+        "title": "Spring for RabbitMQ",
+        "description": "AMQP messaging with RabbitMQ.",
+        "category": "Messaging"
+    },
+    {
+        "code": "kafka",
+        "title": "Spring for Apache Kafka",
+        "description": "Messaging with Kafka.",
+        "category": "Messaging"
+    },
+    {
+        "code": "security",
+        "title": "Spring Security",
+        "description": "Authentication and authorization support.",
+        "category": "Security"
+    },
+    {
+        "code": "oauth2-client",
+        "title": "OAuth2 Client",
+        "description": "OAuth2/OpenID Connect client support.",
+        "category": "Security"
+    },
+    {
+        "code": "oauth2-resource-server",
+        "title": "OAuth2 Resource Server",
+        "description": "Secured resource server with JWT/OAuth2.",
+        "category": "Security"
+    },
+    {
+        "code": "devtools",
+        "title": "Spring Boot DevTools",
+        "description": "Developer productivity enhancements (auto-restart, live reload).",
+        "category": "Development Tools"
+    },
+    {
+        "code": "lombok",
+        "title": "Project Lombok",
+        "description": "Generate boilerplate code using annotations.",
+        "category": "Development Tools"
+    },
+    {
+        "code": "configuration-processor",
+        "title": "Configuration Processor",
+        "description": "Metadata generation for `@ConfigurationProperties`.",
+        "category": "Development Tools"
+    },
+    {
+        "code": "actuator",
+        "title": "Spring Boot Actuator",
+        "description": "Production-ready monitoring & management endpoints.",
+        "category": "Monitoring"
+    },
+    {
+        "code": "wavefront",
+        "title": "Wavefront Tracing",
+        "description": "Wavefront integration for observability.",
+        "category": "Monitoring"
+    },
+    {
+        "code": "zipkin",
+        "title": "Zipkin Tracing",
+        "description": "Distributed tracing with Zipkin.",
+        "category": "Monitoring"
+    },
+    {
+        "code": "sleuth",
+        "title": "Spring Cloud Sleuth",
+        "description": "Deprecated tracing — superseded by Micrometer.",
+        "category": "Monitoring"
+    },
+    {
+        "code": "testcontainers",
+        "title": "Testcontainers",
+        "description": "Container-based integration tests.",
+        "category": "Testing"
+    },
+    {
+        "code": "restdocs",
+        "title": "Spring REST Docs",
+        "description": "Documentation generation for RESTful APIs.",
+        "category": "Testing"
+    },
+    {
+        "code": "thymeleaf",
+        "title": "Thymeleaf",
+        "description": "Server-side template engine for Spring MVC.",
+        "category": "Templating"
+    },
+    {
+        "code": "thymeleaf-reactive",
+        "title": "Thymeleaf Reactive",
+        "description": "Reactive support for Thymeleaf with Spring WebFlux.",
+        "category": "Templating"
+    },
+    {
+        "code": "freemarker",
+        "title": "FreeMarker",
+        "description": "Java-based template engine.",
+        "category": "Templating"
+    },
+    {
+        "code": "mustache",
+        "title": "Mustache",
+        "description": "Logic-less templating language.",
+        "category": "Templating"
+    },
+    {
+        "code": "batch",
+        "title": "Spring Batch",
+        "description": "Batch processing framework.",
+        "category": "Task Processing"
+    },
+    {
+        "code": "integration",
+        "title": "Spring Integration",
+        "description": "Enterprise integration patterns support.",
+        "category": "Task Processing"
+    },
+    {
+        "code": "websocket",
+        "title": "WebSocket Support",
+        "description": "WebSocket endpoints with SockJS and STOMP.",
+        "category": "Web"
+    },
+    {
+        "code": "validation",
+        "title": "Bean Validation",
+        "description": "JSR‑303 validation.",
+        "category": "Web"
+    },
+    {
+        "code": "mail",
+        "title": "Spring for JavaMail",
+        "description": "JavaMail integration for sending email.",
+        "category": "Messaging"
+    }
+]

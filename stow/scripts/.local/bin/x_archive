@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# x_archive - Compress directory to tar.gz or zip
+# Usage: x_archive [DIR] [FORMAT]   or interactive
+
+usage() {
+    cat <<'EOF'
+Usage: x_archive [DIR] [FORMAT]
+
+  Compresses DIR (default: current dir) to archive.
+  FORMAT: gz (default), bz2, xz, zst, zip
+
+  Examples:
+    x_archive                    # current dir -> ./$(basename $PWD).tar.gz
+    x_archive myproject          # myproject -> myproject.tar.gz
+    x_archive myproject zip      # myproject -> myproject.zip
+EOF
+    exit 0
+}
+
+archive_dir() {
+    local dir="${1:-.}"
+    local fmt="${2:-gz}"
+    [[ ! -d "$dir" ]] && { echo "Not a directory: $dir"; exit 1; }
+    dir="$(cd "$dir" && pwd)"
+    local name="$(basename "$dir")"
+    local out="$(dirname "$dir")/$name"
+
+    case "$fmt" in
+        gz)   tar czf "${out}.tar.gz" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.gz" ;;
+        bz2)  tar cjf "${out}.tar.bz2" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.bz2" ;;
+        xz)   tar cJf "${out}.tar.xz" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.xz" ;;
+        zst)  tar cf - -C "$(dirname "$dir")" "$name" | zstd -o "${out}.tar.zst" && echo "Created ${out}.tar.zst" ;;
+        zip)  (cd "$(dirname "$dir")" && zip -r "${out}.zip" "$name") && echo "Created ${out}.zip" ;;
+        *)    echo "Unknown format: $fmt (use gz, bz2, xz, zst, zip)"; exit 1 ;;
+    esac
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    "")        archive_dir . gz ;;
+    *)         archive_dir "$1" "${2:-gz}" ;;
+esac

@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# x_install - Add ~/.local/bin to PATH in shell config
+# Detects shell, avoids duplicates, supports --dry-run and --force
+
+set -e
+
+PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+PATH_PATTERN='\$HOME/\.local/bin'
+
+usage() {
+    echo "Usage: x_install [OPTIONS]"
+    echo ""
+    echo "Add ~/.local/bin to PATH in your shell config file."
+    echo ""
+    echo "Options:"
+    echo "  -n, --dry-run    Show what would be done, don't modify files"
+    echo "  -f, --force      Add even if a similar entry might exist"
+    echo "  -h, --help       Show this help"
+    exit 0
+}
+
+get_config_file() {
+    local shell_name
+    shell_name=$(basename "${SHELL:-$0}")
+    case "$shell_name" in
+        zsh)  echo "$HOME/.zshrc" ;;
+        bash) echo "$HOME/.bashrc" ;;
+        sh)   echo "$HOME/.profile" ;;
+        *)
+            echo "Unsupported shell: $shell_name" >&2
+            echo "Manually add to your config: $PATH_LINE" >&2
+            exit 1
+            ;;
+    esac
+}
+
+already_in_path() {
+    [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]
+}
+
+config_has_entry() {
+    local config="$1"
+    [[ -f "$config" ]] && grep -qE "\.local/bin|PATH.*local/bin" "$config" 2>/dev/null
+}
+
+add_to_config() {
+    local config="$1"
+    local dry_run="${2:-false}"
+    if [[ "$dry_run" == "true" ]]; then
+        echo "[dry-run] Would append to $config:"
+        echo "  $PATH_LINE"
+        return 0
+    fi
+    echo "" >> "$config"
+    echo "# x_ tools (added by x_install)" >> "$config"
+    echo "$PATH_LINE" >> "$config"
+    echo "Added to $config"
+}
+
+DRY_RUN=false
+FORCE=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run) DRY_RUN=true; shift ;;
+        -f|--force)   FORCE=true; shift ;;
+        -h|--help)    usage ;;
+        *) echo "Unknown option: $1" >&2; usage ;;
+    esac
+done
+
+echo "x_install - Add ~/.local/bin to PATH"
+echo "===================================="
+echo ""
+
+CONFIG=$(get_config_file)
+echo "Shell: ${SHELL:-unknown}"
+echo "Config: $CONFIG"
+echo ""
+
+if already_in_path; then
+    echo "~/.local/bin is already in your PATH."
+    exit 0
+fi
+
+if [[ "$FORCE" != "true" ]] && config_has_entry "$CONFIG"; then
+    echo "An entry for ~/.local/bin appears to exist in $CONFIG"
+    echo "If PATH is still wrong, run with --force to add again."
+    exit 1
+fi
+
+if [[ ! -d "$HOME/.local/bin" ]]; then
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "[dry-run] Would create $HOME/.local/bin"
+    else
+        mkdir -p "$HOME/.local/bin"
+        echo "Created $HOME/.local/bin"
+    fi
+fi
+
+add_to_config "$CONFIG" "$DRY_RUN"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo ""
+    echo "Run without --dry-run to apply."
+else
+    echo ""
+    echo "Done. Run: source $CONFIG"
+    echo "Or open a new terminal."
+fi

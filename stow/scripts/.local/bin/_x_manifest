@@ -1,0 +1,63 @@
+# x_ tool index manifest
+# Format: tool_name|description (one per line)
+# Lines with "## Category" are section headers.
+# Add new tools here when creating them.
+
+## Core
+x_backup|Tar backup: local or ssh (subcommands or menu)
+x_guar_ghous|Ultimate disk nuke: Nix, Docker, caches, apt, node_modules (interactive)
+x_backup_repos|Backup GitHub repos (mirror+tar), then archive or delete
+x_crontab|Crontab manager: list, add, delete (subcommands or menu)
+x_gradle_bootstrap|Gradle/Spring Boot wizard (-n NAME or interactive)
+x_install|Add ~/.local/bin to PATH in shell config
+x_mkdocs_init|MkDocs + GitHub Pages setup (interactive or -r/-o flags)
+x_monokit|TypeScript monorepo CLI (init, add lib/app, switch deps)
+x_monokit_menu|Interactive menu for x_monokit (options 5-7 need monokit-files)
+x_nextjs_bootstrap|Next.js + Prisma + Shadcn + tRPC + Inngest (-n NAME or interactive)
+x_phoenix_create|Create Phoenix app (-n NAME or interactive)
+x_phoenix_enhance|Add Oban/auth/etc to existing Phoenix project
+x_port|Port ops: list, query, kill, monitor (subcommands or menu)
+x_ramdisk|tmpfs/RAM disk: create, list, unmount (subcommands or menu)
+x_spring_init|Quick Spring Boot from start.spring.io (-n NAME or interactive)
+x_ts_lib_create|TypeScript library scaffold (tsup, ESLint, Vitest)
+x_tunnel|SSH tunnel: local/remote port forwarding
+x_yt|YouTube/video downloader (yt-dlp or youtube-dl)
+
+## Utilities
+x_archive|Compress dir to tar.gz/zip (gz, bz2, xz, zst)
+x_base64|Base64 encode/decode (stdin or file)
+x_extract|Extract archives by extension (tar.gz, zip, 7z, etc.)
+x_json|Pretty-print JSON (jq or python)
+x_password|Generate random password (copies to clipboard if xclip)
+
+## Docker
+x_docker_clean|Prune images, containers, volumes (menu or subcommands)
+x_docker_compose|Scaffold docker-compose (app + postgres + redis)
+x_docker_run|Interactive docker run with common flags
+
+## Git
+x_git_amend_date|Amend commit dates (interactive or -d for non-interactive)
+x_git_clean|Delete merged branches, prune remotes
+x_git_repo_init|Create repo, add remote, push initial
+x_git_submodule|Init, update, add submodules
+x_git_worktree|Add/list/remove git worktrees
+
+## SSH
+x_ssh_config|Add host block to ~/.ssh/config
+x_ssh_key|Generate SSH key, add to agent, copy to clipboard
+
+## Python
+x_py_project|Scaffold pyproject.toml + venv + src layout
+x_py_venv|Create Python venv, optionally install deps
+
+## Node
+x_node_clean|Remove node_modules + lockfile, reinstall
+x_node_version|Show Node/npm/pnpm, suggest fnm/nvm if missing
+
+## Certs
+x_cert_check|Check SSL cert expiry and SANs for domain
+x_cert_self|Generate self-signed cert for local dev
+
+## Project bootstrap
+x_go_init|Go mod init + cmd/main.go scaffold
+x_rust_init|Cargo init, optional --deps (serde, tokio, etc.)

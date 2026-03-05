@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# x_backup - Tar backup to local dir or over SSH
+# Usage: x_backup [local|ssh] [SRC] [DEST]   or run with no args for menu
+
+usage() {
+    cat <<'EOF'
+Usage: x_backup [COMMAND] [ARGS]
+
+  local [SRC] [DEST]   Tar backup to local dir. Creates DEST/backup_YYYYMMDD_HHMMSS.tar.gz
+  ssh [SRC] [DEST]     Tar over SSH. DEST = user@host:/path (creates backup_TIMESTAMP.tar.gz there)
+
+  If SRC/DEST omitted, prompts interactively.
+
+Run with no args for interactive menu.
+EOF
+    exit 0
+}
+
+check_deps() {
+    command -v tar &>/dev/null || { echo "tar not found."; exit 1; }
+}
+
+cmd_local() {
+    local src="$1" dest="$2"
+    check_deps
+    [[ -z "$src" ]] && { read -rp "Source directory: " src; [[ -z "$src" ]] && exit 1; }
+    [[ -z "$dest" ]] && { read -rp "Backup directory: " dest; [[ -z "$dest" ]] && exit 1; }
+    [[ ! -d "$src" ]] && { echo "Source not found: $src"; exit 1; }
+    mkdir -p "$dest"
+    local ts
+    ts=$(date +%Y%m%d_%H%M%S)
+    tar -czf "${dest}/backup_${ts}.tar.gz" -C "$src" .
+    echo "Created ${dest}/backup_${ts}.tar.gz"
+}
+
+cmd_ssh() {
+    local src="$1" dest="$2"
+    check_deps
+    command -v ssh &>/dev/null || { echo "ssh not found."; exit 1; }
+    [[ -z "$src" ]] && { read -rp "Source directory: " src; [[ -z "$src" ]] && exit 1; }
+    [[ -z "$dest" ]] && { read -rp "SSH destination (user@host:/path): " dest; [[ -z "$dest" ]] && exit 1; }
+    [[ ! -d "$src" ]] && { echo "Source not found: $src"; exit 1; }
+    local ts
+    ts=$(date +%Y%m%d_%H%M%S)
+    # dest is user@host:/path - we write to /path/backup_ts.tar.gz
+    local host_part="${dest%%:*}"
+    local remote_path="${dest#*:}"
+    if [[ "$remote_path" == "$dest" ]]; then
+        echo "DEST must be user@host:/path"
+        exit 1
+    fi
+    tar -czf - -C "$src" . | ssh "$host_part" "cat > '${remote_path}/backup_${ts}.tar.gz'"
+    echo "Created ${dest}/backup_${ts}.tar.gz"
+}
+
+run_menu() {
+    check_deps
+    local src dest method
+    read -rp "Source directory: " src
+    [[ -z "$src" ]] && { echo "Aborted."; exit 1; }
+    [[ ! -d "$src" ]] && { echo "Not found: $src"; exit 1; }
+    echo "1) Local  2) SSH"
+    read -rp "Method: " method
+    case "$method" in
+        1)
+            read -rp "Backup directory: " dest
+            [[ -z "$dest" ]] && exit 1
+            cmd_local "$src" "$dest"
+            ;;
+        2)
+            read -rp "SSH destination (user@host:/path): " dest
+            [[ -z "$dest" ]] && exit 1
+            cmd_ssh "$src" "$dest"
+            ;;
+        *)
+            echo "Invalid."
+            exit 1
+            ;;
+    esac
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    local)     cmd_local "$2" "$3" ;;
+    ssh)       cmd_ssh "$2" "$3" ;;
+    menu|"")   run_menu ;;
+    *)         echo "Unknown: $1"; usage ;;
+esac

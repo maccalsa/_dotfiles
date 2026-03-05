@@ -30,7 +30,8 @@ path=(
 )
 
 export PATH=$(printf "%s:" "${path[@]}")
-
+export DOTNET_ROOT=$HOME/.dotnet
+export PATH=$HOME/.dotnet:$PATH
 ### ─── Antidote ────────────────────────────────────────────────────────────────
 source ~/.zsh/antidote/antidote.zsh
 antidote load < ~/.zsh_plugins.txt

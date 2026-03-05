@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# x_mkdocs_init - MkDocs + GitHub Actions deploy to gh-pages
+# - Prompts for docs root, actions workflow dir, material theme, repo name, username/org
+# - Creates/updates:
+#   - <docs_root>/mkdocs.yml (if missing)
+#   - <docs_root>/requirements.txt
+#   - <actions_dir>/docs.yml
+#   - <docs_root>/docs/index.md (if missing)
+#
+# NOTE: This script does NOT configure GitHub repo settings for you (Pages settings must be done in the UI).
+
+say() { printf "%s\n" "$*"; }
+err() { printf "ERROR: %s\n" "$*" >&2; }
+prompt() {
+  local var="$1" msg="$2" def="${3:-}"
+  local input=""
+  if [[ -n "$def" ]]; then
+    read -r -p "${msg} [${def}]: " input
+    input="${input:-$def}"
+  else
+    read -r -p "${msg}: " input
+  fi
+  printf -v "$var" "%s" "$input"
+}
+
+yesno() {
+  local var="$1" msg="$2" def="${3:-y}"
+  local input=""
+  while true; do
+    read -r -p "${msg} [y/n] (default: ${def}): " input
+    input="${input:-$def}"
+    case "${input,,}" in
+      y|yes) printf -v "$var" "y"; return 0;;
+      n|no)  printf -v "$var" "n"; return 0;;
+      *) say "Please answer y or n.";;
+    esac
+  done
+}
+
+usage() {
+  cat <<'EOF'
+Usage: x_mkdocs_init [OPTIONS]
+
+Set up MkDocs + GitHub Actions deploy to gh-pages.
+
+Options:
+  -d, --docs-root DIR   Docs root (default: docs)
+  -a, --actions-dir DIR Workflows dir (default: .github/workflows)
+  -r, --repo NAME       Repo name (required if non-interactive)
+  -o, --owner NAME      GitHub owner/org (required if non-interactive)
+  -m, --material        Use mkdocs-material theme (default)
+  -n, --no-material     Use default mkdocs theme
+  -h, --help            Show this help
+
+Run with no args for interactive mode.
+EOF
+  exit 0
+}
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d|--docs-root)   DOCS_ROOT="$2";   shift 2 ;;
+    -a|--actions-dir) ACTIONS_DIR="$2"; shift 2 ;;
+    -r|--repo)        REPO_NAME="$2";   shift 2 ;;
+    -o|--owner)       OWNER_NAME="$2"; shift 2 ;;
+    -m|--material)    USE_MATERIAL="y"; shift ;;
+    -n|--no-material) USE_MATERIAL="n"; shift ;;
+    -h|--help)        usage ;;
+    *) err "Unknown: $1"; exit 2 ;;
+  esac
+done
+
+# -------- Prompts (if not set) --------
+say ""
+say "MkDocs -> GitHub Pages (gh-pages branch) setup"
+say "-------------------------------------------"
+say ""
+
+[[ -z "${DOCS_ROOT:-}" ]]   && prompt DOCS_ROOT "Docs root folder (relative to repo root)" "docs"
+[[ -z "${ACTIONS_DIR:-}" ]] && prompt ACTIONS_DIR "Location of GitHub Actions workflows dir" ".github/workflows"
+[[ -z "${USE_MATERIAL:-}" ]] && yesno USE_MATERIAL "Add mkdocs-material theme?" "y"
+[[ -z "${REPO_NAME:-}" ]]   && prompt REPO_NAME "Repo name (as on GitHub, e.g. my-repo)"
+[[ -z "${OWNER_NAME:-}" ]]  && prompt OWNER_NAME "GitHub username or org (owner)"
+
+# Normalize: strip trailing slashes
+DOCS_ROOT="${DOCS_ROOT%/}"
+ACTIONS_DIR="${ACTIONS_DIR%/}"
+
+# -------- Derived paths --------
+MKDOCS_YML="${DOCS_ROOT}/mkdocs.yml"
+REQ_TXT="${DOCS_ROOT}/requirements.txt"
+DOCS_MD_DIR="${DOCS_ROOT}/docs"
+INDEX_MD="${DOCS_MD_DIR}/index.md"
+WORKFLOW_FILE="${ACTIONS_DIR}/docs.yml"
+
+SITE_URL="https://${OWNER_NAME}.github.io/${REPO_NAME}/"
+
+# -------- Checks --------
+if [[ ! -d ".git" ]]; then
+  err "This doesn't look like a git repo (no .git directory). Run from the repo root."
+  exit 1
+fi
+
+mkdir -p "${DOCS_ROOT}"
+mkdir -p "${ACTIONS_DIR}"
+mkdir -p "${DOCS_MD_DIR}"
+
+# -------- Create mkdocs.yml if missing --------
+if [[ -f "${MKDOCS_YML}" ]]; then
+  say "Found existing ${MKDOCS_YML} - leaving it as-is."
+else
+  say "Creating ${MKDOCS_YML}"
+  if [[ "${USE_MATERIAL}" == "y" ]]; then
+    cat > "${MKDOCS_YML}" <<EOF
+site_name: ${REPO_NAME} Docs
+site_url: ${SITE_URL}
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+EOF
+  else
+    cat > "${MKDOCS_YML}" <<EOF
+site_name: ${REPO_NAME} Docs
+site_url: ${SITE_URL}
+
+theme:
+  name: mkdocs
+
+nav:
+  - Home: index.md
+EOF
+  fi
+fi
+
+# -------- Create requirements.txt (pin-ish, but simple) --------
+say "Writing ${REQ_TXT}"
+if [[ "${USE_MATERIAL}" == "y" ]]; then
+  cat > "${REQ_TXT}" <<'EOF'
+mkdocs>=1.5
+mkdocs-material>=9.5
+EOF
+else
+  cat > "${REQ_TXT}" <<'EOF'
+mkdocs>=1.5
+EOF
+fi
+
+# -------- Create docs index if missing --------
+if [[ -f "${INDEX_MD}" ]]; then
+  say "Found existing ${INDEX_MD} - leaving it as-is."
+else
+  say "Creating ${INDEX_MD}"
+  cat > "${INDEX_MD}" <<EOF
+# ${REPO_NAME} documentation
+
+Welcome 👋
+
+- This site is built with **MkDocs**.
+- It is deployed automatically to **GitHub Pages** whenever files in \`/${DOCS_ROOT}\` change.
+
+## Next steps
+
+- Edit this page: \`${INDEX_MD}\`
+- Add more pages under: \`${DOCS_MD_DIR}/\`
+- Update navigation in: \`${MKDOCS_YML}\`
+EOF
+fi
+
+# -------- Default branch --------
+DEFAULT_BRANCH="main"
+if branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null); then
+  DEFAULT_BRANCH="${branch#refs/remotes/origin/}"
+fi
+
+# -------- Create GitHub Actions workflow --------
+say "Creating/overwriting ${WORKFLOW_FILE}"
+cat > "${WORKFLOW_FILE}" <<EOF
+name: Deploy docs
+
+on:
+  push:
+    branches: [ "${DEFAULT_BRANCH}" ]
+    paths:
+      - "${DOCS_ROOT}/**"
+      - "${ACTIONS_DIR}/docs.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Git credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install MkDocs dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r "${REQ_TXT}"
+
+      - name: Deploy to GitHub Pages (gh-pages branch)
+        working-directory: "${DOCS_ROOT}"
+        run: mkdocs gh-deploy --force
+EOF
+
+# -------- Helpful output --------
+say ""
+say "✅ Files created/updated:"
+say "  - ${MKDOCS_YML}"
+say "  - ${REQ_TXT}"
+say "  - ${INDEX_MD}"
+say "  - ${WORKFLOW_FILE}"
+say ""
+say "Local test (optional, recommended):"
+say "  cd ${DOCS_ROOT}"
+say "  python -m pip install -r requirements.txt"
+say "  mkdocs serve"
+say ""
+say "Commit & push:"
+say "  git add ${DOCS_ROOT} ${ACTIONS_DIR}/docs.yml"
+say "  git commit -m \"Add MkDocs + GitHub Pages deploy\""
+say "  git push"
+say ""
+say "Then in GitHub UI (required):"
+say "  1) Repo -> Settings -> Pages"
+say "  2) Source: Deploy from a branch"
+say "  3) Branch: gh-pages"
+say "  4) Folder: / (root)"
+say ""
+say "Your docs URL will be:"
+say "  ${SITE_URL}"
+say ""
+say "Trigger behavior:"
+say "  - Only pushes that change files under /${DOCS_ROOT} (or the workflow file) redeploy the docs."
+say ""
+say "If your default branch is not 'main', edit:"
+say "  ${WORKFLOW_FILE}"
+say "and change branches: [ \"main\" ] to your default branch name."
+say ""

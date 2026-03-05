@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# x_docker_compose - Scaffold minimal docker-compose (app + db + redis)
+# Usage: x_docker_compose [DIR]   creates docker-compose.yml + .env.example
+
+usage() {
+    cat <<'EOF'
+Usage: x_docker_compose [DIR]
+
+  Creates docker-compose.yml with app, postgres, redis services.
+  DIR defaults to current directory. Also creates .env.example.
+EOF
+    exit 0
+}
+
+scaffold() {
+    local dir="${1:-.}"
+    mkdir -p "$dir"
+    local name
+    name=$(basename "$(cd "$dir" && pwd)" | tr -cd '[:alnum:]_-' || echo "app")
+
+    cat > "$dir/docker-compose.yml" <<'YAML'
+version: "3.8"
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/${DB_NAME:-app}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=${DB_NAME:-app}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
+YAML
+
+    cat > "$dir/.env.example" <<'ENV'
+DB_NAME=app
+# DATABASE_URL and REDIS_URL are set by compose; override if needed
+ENV
+
+    echo "Created $dir/docker-compose.yml and $dir/.env.example"
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) scaffold "${1:-.}" ;;
+esac

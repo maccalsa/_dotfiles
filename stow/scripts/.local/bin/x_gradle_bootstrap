@@ -6,6 +6,24 @@
 
 set -euo pipefail
 
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+  cat <<'EOF'
+Usage: x_gradle_bootstrap [-n NAME]
+
+Interactive wizard for Gradle/Spring Boot projects:
+  - Spring app, library, or multi-module
+  - Java 21, Kotlin 2.0.0
+  - Comprehensive starter selection
+
+Options:
+  -n, --name NAME   Project/library/root name (skip prompt)
+EOF
+  exit 0
+}
+
+PROJECT_NAME_ARG=""
+[[ "$1" == "-n" || "$1" == "--name" ]] && [[ -n "${2:-}" ]] && { PROJECT_NAME_ARG="$2"; shift 2; }
+
 # --------------------
 # Configuration Constants
 # --------------------
@@ -232,6 +250,11 @@ ask_project_type() {
 get_project_name() {
   local prompt="$1"
   local project_name
+  
+  if [[ -n "${PROJECT_NAME_ARG:-}" ]]; then
+    project_name=$(sanitize_input "$PROJECT_NAME_ARG")
+    validate_project_name "$project_name" && echo "$project_name" && return
+  fi
   
   while true; do
     read -rp "$prompt: " project_name

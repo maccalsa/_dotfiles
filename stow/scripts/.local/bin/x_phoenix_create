@@ -1,0 +1,67 @@
+#!/bin/bash
+
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+  cat <<'EOF'
+Usage: x_phoenix_create [-n NAME]
+
+Interactive wizard to create a new Phoenix/Elixir app with optional:
+  - Database (PostgreSQL, MySQL, SQLite, or none)
+  - LiveView, TailwindCSS, Mailer
+  - Oban, Bodyguard, Req, Waffle, OpenApiSpex
+  - Authentication (phx.gen.auth)
+
+Options:
+  -n, --name NAME   Project name (skip prompt)
+
+Run from the directory where you want the project created.
+EOF
+  exit 0
+}
+
+set -e
+
+# Pre-flight: mix must be available
+command -v mix &>/dev/null || { echo "Error: mix not found. Install Elixir first." >&2; exit 1; }
+
+# Parse -n/--name
+PROJECT_NAME_ARG=""
+[[ "$1" == "-n" || "$1" == "--name" ]] && [[ -n "${2:-}" ]] && { PROJECT_NAME_ARG="$2"; shift 2; }
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
+source "$SCRIPT_DIR/_phoenix.sh"
+source "$SCRIPT_DIR/_oban.sh"
+
+# Main execution
+main() {
+  # Get user inputs
+  local project_name
+  if [[ -n "$PROJECT_NAME_ARG" ]]; then
+    project_name="$PROJECT_NAME_ARG"
+  else
+    project_name=$(get_project_name)
+  fi
+  [[ -z "$project_name" ]] && { echo "Error: project name required" >&2; exit 1; }
+  local db_flag=$(get_database_selection)
+  local features=$(get_optional_features)
+  local deps_and_auth=$(get_additional_dependencies)
+  
+  # Parse dependencies and auth
+  local extra_deps=$(echo "$deps_and_auth" | sed 's/^://' | cut -d: -f1)
+  local auth=$(echo "$deps_and_auth" | cut -d: -f2)
+  
+  # Setup Phoenix (core application)
+  setup_phoenix "$project_name" "$db_flag" "$features" "$extra_deps" "$auth"
+
+  # Setup Oban (if selected)
+  setup_oban "$project_name" "$extra_deps"
+  
+  # Future: Add other component setups here
+  # setup_bodyguard "$project_name" "$extra_deps"
+  # setup_req "$project_name" "$extra_deps"
+  # setup_waffle "$project_name" "$extra_deps"
+  # setup_open_api_spex "$project_name" "$extra_deps"
+}
+
+# Run main function
+main 

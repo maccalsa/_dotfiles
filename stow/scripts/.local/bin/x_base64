@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# x_base64 - Encode/decode base64
+# Usage: x_base64 [encode|decode] [FILE]   or stdin
+
+usage() {
+    cat <<'EOF'
+Usage: x_base64 [encode|decode] [FILE]
+
+  encode [FILE]   Base64 encode. Reads FILE or stdin.
+  decode [FILE]   Base64 decode. Reads FILE or stdin.
+
+  Examples:
+    echo -n "hello" | x_base64 encode
+    x_base64 encode myfile.bin
+    x_base64 decode encoded.txt
+EOF
+    exit 0
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    encode)
+        if [[ -n "$2" ]]; then
+            base64 -w0 "$2" 2>/dev/null || base64 "$2"
+        else
+            base64 -w0 2>/dev/null || base64
+        fi
+        echo
+        ;;
+    decode)
+        if [[ -n "$2" ]]; then
+            base64 -d < "$2" 2>/dev/null || base64 -di < "$2"
+        else
+            base64 -d 2>/dev/null || base64 -di
+        fi
+        ;;
+    "") usage ;;
+    *)  echo "Unknown: $1"; usage ;;
+esac

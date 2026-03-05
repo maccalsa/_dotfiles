@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# x_port - Port operations: list, query, kill, monitor
+# Usage: x_port [list|query|kill|monitor] [PORT] [-u USER]
+
+usage() {
+    cat <<'EOF'
+Usage: x_port [COMMAND] [PORT] [-u USER]
+
+  list [USER]       List open ports for USER (default: current user)
+  query PORT [USER] Show process on PORT
+  kill PORT [USER]  Kill process on PORT (SIGTERM)
+  monitor PORT      Monitor traffic on PORT (tcpdump, needs sudo)
+
+  -u USER           User to filter by (default: current user)
+
+Run with no args for interactive menu.
+EOF
+    exit 0
+}
+
+check_deps() {
+    command -v ss &>/dev/null || { echo "ss not found. Install iproute2."; exit 1; }
+}
+
+get_user() {
+    local user="$1"
+    [[ -z "$user" ]] && user=$(whoami)
+    echo "$user"
+}
+
+cmd_list() {
+    local user
+    user=$(get_user "$1")
+    check_deps
+    echo "Open ports for $user:"
+    local pids
+    pids=$(ps -u "$user" -o pid= 2>/dev/null | tr '\n' ' ')
+    if [[ -z "$pids" ]]; then
+        echo "(none)"
+        return
+    fi
+    local pattern
+    pattern=$(echo "$pids" | tr ' ' '\n' | awk '{printf "pid=%s|", $1}' | sed 's/|$//')
+    ss -ltnp 2>/dev/null | grep -E "$pattern" || echo "(none)"
+}
+
+cmd_query() {
+    local port="$1" user
+    user=$(get_user "$2")
+    [[ -z "$port" ]] && { read -rp "Port: " port; [[ -z "$port" ]] && exit 1; }
+    check_deps
+    echo "Port $port:"
+    ss -ltnp 2>/dev/null | grep -E ":$port[[:space:]]" || ss -ltnp 2>/dev/null | grep ":$port"
+}
+
+cmd_kill() {
+    local port="$1" user pid
+    user=$(get_user "$2")
+    [[ -z "$port" ]] && { read -rp "Port to kill: " port; [[ -z "$port" ]] && exit 1; }
+    check_deps
+    pid=$(ss -ltnp 2>/dev/null | grep -E ":$port[[:space:]]" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)
+    if [[ -z "$pid" ]]; then
+        echo "No process on port $port"
+        exit 1
+    fi
+    echo "Killing PID $pid on port $port"
+    kill "$pid"
+}
+
+cmd_monitor() {
+    local port="$1"
+    [[ -z "$port" ]] && { read -rp "Port to monitor: " port; [[ -z "$port" ]] && exit 1; }
+    command -v tcpdump &>/dev/null || { echo "tcpdump not found."; exit 1; }
+    echo "Monitoring port $port (Ctrl+C to stop)"
+    sudo tcpdump -i any port "$port"
+}
+
+run_menu() {
+    check_deps
+    local user
+    read -rp "User (default: $(whoami)): " user
+    user=$(get_user "$user")
+    while true; do
+        echo ""
+        echo "1) List ports for $user"
+        echo "2) Query port"
+        echo "3) Kill process on port"
+        echo "4) Monitor port"
+        echo "5) Exit"
+        read -rp "Choice: " choice
+        case "$choice" in
+            1) cmd_list "$user" ;;
+            2) read -rp "Port: " p; cmd_query "$p" "$user" ;;
+            3) read -rp "Port: " p; cmd_kill "$p" "$user" ;;
+            4) read -rp "Port: " p; cmd_monitor "$p" ;;
+            5) exit 0 ;;
+            *) echo "Invalid." ;;
+        esac
+    done
+}
+
+# Parse -u flag (can appear anywhere)
+USER_ARG=""
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -u|--user) USER_ARG="$2"; shift 2 ;;
+        -h|--help) usage ;;
+        *) ARGS+=("$1"); shift ;;
+    esac
+done
+set -- "${ARGS[@]}"
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    list)      cmd_list "${USER_ARG:-$2}" ;;
+    query)     cmd_query "$2" "$USER_ARG" ;;
+    kill)      cmd_kill "$2" "$USER_ARG" ;;
+    monitor)   cmd_monitor "$2" ;;
+    menu|"")   run_menu ;;
+    *)         echo "Unknown: $1"; usage ;;
+esac

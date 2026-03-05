@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# x_git_repo_init - Create repo, add remote, push initial branch
+# Usage: x_git_repo_init [DIR] [REMOTE_URL]
+
+usage() {
+    cat <<'EOF'
+Usage: x_git_repo_init [DIR] [REMOTE_URL]
+
+  Creates git repo in DIR (default: current), adds remote, pushes.
+  If REMOTE_URL omitted, prompts. Supports GitHub/GitLab URLs.
+
+  Examples:
+    x_git_repo_init
+    x_git_repo_init myproject https://github.com/user/myproject.git
+EOF
+    exit 0
+}
+
+cmd_init() {
+    local dir="${1:-.}"
+    local remote="$2"
+    [[ ! -d "$dir" ]] && mkdir -p "$dir"
+    cd "$dir" || exit 1
+
+    if [[ -d .git ]]; then
+        echo "Already a git repo."
+        [[ -z "$remote" ]] && return 0
+    else
+        git init
+        echo "Initialized repo."
+    fi
+
+    [[ -z "$remote" ]] && read -rp "Remote URL (e.g. git@github.com:user/repo.git): " remote
+    [[ -z "$remote" ]] && { echo "No remote given."; return 0; }
+
+    git remote remove origin 2>/dev/null
+    git remote add origin "$remote"
+    git branch -M main 2>/dev/null || git branch -M master
+    [[ -f .gitignore ]] || echo -e ".env\nnode_modules/\n__pycache__/\n*.pyc\n.DS_Store" > .gitignore
+    git add -A 2>/dev/null
+    git status --short
+    read -rp "Commit and push? (y/n): " confirm
+    [[ "$confirm" != [Yy]* ]] && { echo "Skipped push."; return 0; }
+    git add -A
+    git commit -m "Initial commit" 2>/dev/null || true
+    git push -u origin main 2>/dev/null || git push -u origin master
+    echo "Done."
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) cmd_init "${1:-.}" "$2" ;;
+esac

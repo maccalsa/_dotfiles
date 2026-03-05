@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# x_git_worktree - Add/list/remove git worktrees
+# Usage: x_git_worktree [add|list|remove] [ARGS]
+
+usage() {
+    cat <<'EOF'
+Usage: x_git_worktree [COMMAND] [ARGS]
+
+  add BRANCH [PATH]    Add worktree for BRANCH. PATH defaults to ../<branch>.
+  list                 List worktrees
+  remove PATH          Remove worktree at PATH
+
+  Examples:
+    x_git_worktree add feature-x
+    x_git_worktree add feature-x /tmp/feature-x
+    x_git_worktree remove /tmp/feature-x
+EOF
+    exit 0
+}
+
+in_repo() {
+    git rev-parse --git-dir &>/dev/null || { echo "Not a git repo."; exit 1; }
+}
+
+cmd_add() {
+    in_repo
+    local branch="$1" path="$2"
+    [[ -z "$branch" ]] && { read -rp "Branch name: " branch; [[ -z "$branch" ]] && exit 1; }
+    [[ -z "$path" ]] && path="../$branch"
+    git worktree add "$path" "$branch"
+    echo "Worktree at $path for $branch"
+}
+
+cmd_list() {
+    in_repo
+    git worktree list
+}
+
+cmd_remove() {
+    in_repo
+    local path="$1"
+    [[ -z "$path" ]] && { read -rp "Worktree path: " path; [[ -z "$path" ]] && exit 1; }
+    git worktree remove "$path"
+    echo "Removed $path"
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    add)    cmd_add "$2" "$3" ;;
+    list)   cmd_list ;;
+    remove) cmd_remove "$2" ;;
+    *)      echo "Unknown: $1"; usage ;;
+esac

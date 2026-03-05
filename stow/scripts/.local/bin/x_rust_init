@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# x_rust_init - Cargo init with optional common deps
+# Usage: x_rust_init [NAME] [--deps]
+
+usage() {
+    cat <<'EOF'
+Usage: x_rust_init [NAME] [--deps]
+
+  Creates cargo project. With --deps, adds common crates:
+    serde, serde_json, tokio, anyhow, thiserror, tracing
+
+  Examples:
+    x_rust_init myapp
+    x_rust_init myapp --deps
+EOF
+    exit 0
+}
+
+cmd_init() {
+    local name="$1"
+    local deps="$2"
+    command -v cargo &>/dev/null || { echo "cargo not found. Install rustup."; exit 1; }
+
+    [[ -z "$name" ]] && name="$(basename "$PWD")"
+    [[ -z "$name" ]] && name="rust_app"
+
+    cargo init "$name"
+    cd "$name" || exit 1
+
+    if [[ "$deps" == "--deps" ]]; then
+        cargo add serde serde_json tokio --features full
+        cargo add anyhow thiserror tracing
+        echo "Added common deps."
+    fi
+
+    echo "Created: $name"
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    --deps)    cmd_init "" --deps ;;
+    *)
+        [[ "${2:-}" == "--deps" ]] && cmd_init "$1" --deps || cmd_init "$1"
+        ;;
+esac

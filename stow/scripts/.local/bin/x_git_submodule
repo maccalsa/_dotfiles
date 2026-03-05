@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# x_git_submodule - Init, update, add submodules
+# Usage: x_git_submodule [init|update|add] [ARGS]
+
+usage() {
+    cat <<'EOF'
+Usage: x_git_submodule [COMMAND] [ARGS]
+
+  init       git submodule init && git submodule update
+  update     git submodule update --init --recursive
+  add URL [PATH]   Add submodule. PATH optional.
+
+  Examples:
+    x_git_submodule init
+    x_git_submodule add https://github.com/user/repo.git vendor/repo
+EOF
+    exit 0
+}
+
+in_repo() {
+    git rev-parse --git-dir &>/dev/null || { echo "Not a git repo."; exit 1; }
+}
+
+cmd_init() {
+    in_repo
+    git submodule init && git submodule update
+    echo "Submodules initialized."
+}
+
+cmd_update() {
+    in_repo
+    git submodule update --init --recursive
+    echo "Submodules updated."
+}
+
+cmd_add() {
+    in_repo
+    local url="$1" path="$2"
+    [[ -z "$url" ]] && { read -rp "Submodule URL: " url; [[ -z "$url" ]] && exit 1; }
+    if [[ -n "$path" ]]; then
+        git submodule add "$url" "$path"
+    else
+        git submodule add "$url"
+    fi
+    echo "Added submodule."
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    init)   cmd_init ;;
+    update) cmd_update ;;
+    add)    cmd_add "$2" "$3" ;;
+    *)      echo "Unknown: $1"; usage ;;
+esac

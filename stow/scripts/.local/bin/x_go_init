@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# x_go_init - Go mod init with basic layout
+# Usage: x_go_init [MODULE]
+
+usage() {
+    cat <<'EOF'
+Usage: x_go_init [MODULE]
+
+  Runs go mod init, creates cmd/MODULE/main.go.
+  MODULE defaults to directory name (e.g. github.com/user/repo).
+EOF
+    exit 0
+}
+
+cmd_init() {
+    local module="$1"
+    command -v go &>/dev/null || { echo "go not found."; exit 1; }
+
+    [[ -z "$module" ]] && module="$(basename "$PWD")"
+    [[ -z "$module" ]] && module="app"
+
+    go mod init "$module"
+    mkdir -p "cmd/$module"
+    cat > "cmd/${module}/main.go" <<'GO'
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, World!")
+}
+GO
+    echo "Created: go.mod, cmd/$module/main.go"
+    echo "Run: go run ./cmd/$module"
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) cmd_init "$1" ;;
+esac

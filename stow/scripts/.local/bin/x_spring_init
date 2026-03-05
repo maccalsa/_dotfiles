@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
 
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+  cat <<'EOF'
+Usage: x_spring_init [-n NAME]
+
+Quick Spring Boot project from start.spring.io.
+Fixed starters: WebFlux, R2DBC, JPA, Security, etc.
+
+Options:
+  -n, --name NAME   Project name (skip prompt)
+EOF
+  exit 0
+}
+
+PROJECT_NAME_ARG=""
+[[ "$1" == "-n" || "$1" == "--name" ]] && [[ -n "${2:-}" ]] && { PROJECT_NAME_ARG="$2"; shift 2; }
+
 # ----- Common Spring Starters -----
 declare -A STARTERS=(
   [1]="webflux"
@@ -27,9 +43,13 @@ declare -A STARTER_NAMES=(
 )
 
 # ----- Project Name -----
-while [[ -z "$PROJECT_NAME" ]]; do
-  read -rp "Project name (required): " PROJECT_NAME
-done
+if [[ -n "${PROJECT_NAME_ARG:-}" ]]; then
+  PROJECT_NAME="$PROJECT_NAME_ARG"
+else
+  while [[ -z "$PROJECT_NAME" ]]; do
+    read -rp "Project name (required): " PROJECT_NAME
+  done
+fi
 
 # Language
 read -rp "Language [kotlin]: " LANGUAGE

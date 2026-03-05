@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# x_git_clean - Delete merged branches, prune remotes
+# Usage: x_git_clean [branches|remotes|all]
+
+usage() {
+    cat <<'EOF'
+Usage: x_git_clean [COMMAND]
+
+  branches   Delete local branches merged into current branch (with confirmation)
+  remotes    Prune remote-tracking branches (git fetch --prune)
+  all        Both: prune remotes, then delete merged locals
+
+  Requires git. Run from a git repo.
+EOF
+    exit 0
+}
+
+in_repo() {
+    git rev-parse --git-dir &>/dev/null || { echo "Not a git repo."; exit 1; }
+}
+
+cmd_branches() {
+    in_repo
+    local merged
+    merged=$(git branch --merged | grep -v '^\*' | grep -v 'main\|master' | tr -d ' ')
+    [[ -z "$merged" ]] && { echo "No merged branches to delete."; return 0; }
+    echo "Merged branches (excluding main/master):"
+    echo "$merged"
+    read -rp "Delete these? (y/n): " confirm
+    [[ "$confirm" != [Yy]* ]] && { echo "Aborted."; return 0; }
+    echo "$merged" | xargs -r git branch -d
+    echo "Done."
+}
+
+cmd_remotes() {
+    in_repo
+    git fetch --prune
+    echo "Pruned remote-tracking branches."
+}
+
+cmd_all() {
+    in_repo
+    cmd_remotes
+    cmd_branches
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    branches) cmd_branches ;;
+    remotes)  cmd_remotes ;;
+    all)      cmd_all ;;
+    menu|"")
+        echo "1) Delete merged local branches"
+        echo "2) Prune remote-tracking branches"
+        echo "3) Both"
+        read -rp "Choice: " c
+        case "$c" in
+            1) cmd_branches ;;
+            2) cmd_remotes ;;
+            3) cmd_all ;;
+            *) echo "Invalid."; exit 1 ;;
+        esac
+        ;;
+    *) echo "Unknown: $1"; usage ;;
+esac

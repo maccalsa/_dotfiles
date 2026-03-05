@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# x_node_clean - Remove node_modules and lockfile, reinstall
+# Usage: x_node_clean [DIR]
+
+usage() {
+    cat <<'EOF'
+Usage: x_node_clean [DIR]
+
+  Removes node_modules and lockfile(s), then reinstalls.
+  DIR defaults to current directory.
+  Uses npm/pnpm/yarn based on lockfile present.
+EOF
+    exit 0
+}
+
+cmd_clean() {
+    local dir="${1:-.}"
+    cd "$dir" || exit 1
+
+    [[ -d node_modules ]] || { echo "No node_modules found."; exit 1; }
+
+    local pkg="npm"
+    [[ -f pnpm-lock.yaml ]] && pkg="pnpm"
+    [[ -f yarn.lock ]] && pkg="yarn"
+    [[ -f bun.lockb ]] && pkg="bun"
+
+    echo "Using $pkg"
+    rm -rf node_modules
+    rm -f package-lock.json pnpm-lock.yaml yarn.lock bun.lockb 2>/dev/null
+
+    case "$pkg" in
+        npm)  npm install ;;
+        pnpm) pnpm install ;;
+        yarn) yarn install ;;
+        bun)  bun install ;;
+    esac
+    echo "Done."
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) cmd_clean "${1:-.}" ;;
+esac

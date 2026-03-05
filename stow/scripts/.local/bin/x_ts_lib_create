@@ -2,10 +2,19 @@
 
 set -e
 
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+  cat <<'EOF'
+Usage: x_ts_lib_create <name>
+
+Creates a TypeScript library with tsup, ESLint, Prettier, Vitest, GitHub Actions.
+EOF
+  exit 0
+}
+
 PROJECT_NAME=$1
 
 if [ -z "$PROJECT_NAME" ]; then
-  echo "❌ Usage: ./create-ts-lib.sh my-lib-name"
+  echo "❌ Usage: x_ts_lib_create <my-lib-name>"
   exit 1
 fi
 

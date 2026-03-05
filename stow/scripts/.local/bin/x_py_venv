@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# x_py_venv - Create Python venv, optionally install deps
+# Usage: x_py_venv [DIR] [REQUIREMENTS]
+
+usage() {
+    cat <<'EOF'
+Usage: x_py_venv [DIR] [REQUIREMENTS]
+
+  Creates venv in DIR (default: .venv in current dir).
+  If REQUIREMENTS file exists or is given, runs pip install -r.
+
+  After creation, prints: source DIR/bin/activate
+
+  Examples:
+    x_py_venv
+    x_py_venv .venv
+    x_py_venv .venv requirements.txt
+EOF
+    exit 0
+}
+
+cmd_create() {
+    local dir="${1:-.venv}"
+    local req="$2"
+    command -v python3 &>/dev/null || { echo "python3 not found."; exit 1; }
+
+    python3 -m venv "$dir"
+    echo "Created venv: $dir"
+
+    if [[ -n "$req" && -f "$req" ]]; then
+        "$dir/bin/pip" install -r "$req"
+        echo "Installed from $req"
+    elif [[ -f "requirements.txt" ]]; then
+        "$dir/bin/pip" install -r requirements.txt
+        echo "Installed from requirements.txt"
+    fi
+
+    echo ""
+    echo "Activate with: source $dir/bin/activate"
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) cmd_create "${1:-.venv}" "$2" ;;
+esac

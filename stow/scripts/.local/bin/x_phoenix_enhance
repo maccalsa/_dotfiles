@@ -1,11 +1,20 @@
 #!/bin/bash
 
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+  cat <<'EOF'
+Usage: x_phoenix_enhance
+
+Add components to an existing Phoenix project: Oban, Bodyguard, Req,
+Waffle, OpenApiSpex, Authentication. Skips already-installed components.
+
+Run from your Phoenix project root (where mix.exs lives).
+EOF
+  exit 0
+}
+
 set -e
 
-# Get the actual script directory (resolving symlinks)
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-
-# Source all modules
 source "$SCRIPT_DIR/_common.sh"
 source "$SCRIPT_DIR/_oban.sh"
 
@@ -196,10 +205,6 @@ main() {
   # Parse dependencies and auth
   local extra_deps=$(echo "$deps_and_auth" | cut -d: -f1)
   local auth=$(echo "$deps_and_auth" | cut -d: -f2)
-  
-  print_info "Raw deps_and_auth: $deps_and_auth"
-  print_info "Parsed extra_deps: $extra_deps"
-  print_info "Parsed auth: $auth"
   
   # Enhance project
   enhance_phoenix_project "$project_name" "$extra_deps" "$auth"

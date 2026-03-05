@@ -3,6 +3,11 @@ import subprocess
 import sys
 import shutil
 
+if len(sys.argv) > 1 and sys.argv[1] in ('-h', '--help'):
+    print("Usage: x_yt")
+    print("Interactive YouTube/video downloader (yt-dlp or youtube-dl)")
+    sys.exit(0)
+
 class EasyDownloader:
     def __init__(self):
         # Check for yt-dlp first, then fallback to youtube-dl

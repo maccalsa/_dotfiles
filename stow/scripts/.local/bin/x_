@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# x_ - List all x_ tools with descriptions
+# Run with no args to see the index; run "x_ <name>" to show help for a specific tool
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MANIFEST="${SCRIPT_DIR}/_x_manifest"
+
+list_all() {
+    echo "x_ tools (personal toolset)"
+    echo "=========================="
+    echo ""
+    if [[ ! -f "$MANIFEST" ]]; then
+        echo "Manifest not found. Listing x_* executables in $(dirname "$0"):"
+        for f in "$SCRIPT_DIR"/x_*; do
+            [[ -x "$f" && -f "$f" ]] && echo "  $(basename "$f")"
+        done
+        return
+    fi
+    local category=""
+    while IFS='|' read -r name desc; do
+        if [[ "$name" =~ ^##[[:space:]]+(.+)$ ]]; then
+            category="${BASH_REMATCH[1]}"
+            echo ""
+            echo "  $category"
+            echo "  $(printf '%*s' ${#category} '' | tr ' ' '-')"
+        elif [[ -n "$name" && -n "$desc" && "$name" != \#* ]]; then
+            printf "    %-20s %s\n" "$name" "$desc"
+        fi
+    done < "$MANIFEST"
+    echo ""
+}
+
+show_tool_help() {
+    local tool="$1"
+    local path="${SCRIPT_DIR}/${tool}"
+    if [[ -x "$path" ]]; then
+        echo "Running: $tool --help"
+        echo ""
+        "$path" --help 2>/dev/null || "$path" -h 2>/dev/null || echo "  (no --help/-h support)"
+    else
+        echo "Unknown tool: $tool"
+        list_all
+    fi
+}
+
+case "${1:-}" in
+    -h|--help)
+        echo "Usage: x_ [tool]"
+        echo ""
+        echo "  No args    List all x_ tools with descriptions"
+        echo "  x_ <name>  Show help for a specific tool (runs <name> --help)"
+        echo ""
+        list_all
+        ;;
+    "")
+        list_all
+        ;;
+    *)
+        show_tool_help "$1"
+        ;;
+esac

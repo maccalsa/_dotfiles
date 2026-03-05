@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# x_ssh_config - Add host block to ~/.ssh/config
+# Usage: x_ssh_config [HOST] [HOSTNAME] [USER]
+
+usage() {
+    cat <<'EOF'
+Usage: x_ssh_config [HOST] [HOSTNAME] [USER]
+
+  Appends a Host block to ~/.ssh/config.
+  HOST: alias (e.g. myserver)
+  HOSTNAME: actual hostname or IP
+  USER: SSH user (default: current user)
+
+  Examples:
+    x_ssh_config prod prod.example.com
+    x_ssh_config dev 192.168.1.10 deploy
+EOF
+    exit 0
+}
+
+cmd_add() {
+    local host="$1" hostname="$2" user="${3:-$USER}"
+    [[ -z "$host" ]] && read -rp "Host alias: " host
+    [[ -z "$host" ]] && { echo "Host required."; exit 1; }
+    [[ -z "$hostname" ]] && read -rp "HostName (IP or domain): " hostname
+    [[ -z "$hostname" ]] && { echo "HostName required."; exit 1; }
+
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+    [[ -f "$HOME/.ssh/config" ]] || touch "$HOME/.ssh/config"
+    chmod 600 "$HOME/.ssh/config"
+
+    local block="
+Host $host
+    HostName $hostname
+    User $user
+"
+    echo "$block" >> "$HOME/.ssh/config"
+    echo "Added to ~/.ssh/config:"
+    echo "$block"
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) cmd_add "$1" "$2" "$3" ;;
+esac

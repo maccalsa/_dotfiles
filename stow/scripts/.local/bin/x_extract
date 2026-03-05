@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# x_extract - Extract archives by extension (tar.gz, zip, etc.)
+# Usage: x_extract [FILE...]   or run with no args to pick from current dir
+
+usage() {
+    cat <<'EOF'
+Usage: x_extract [FILE...]
+
+  Extracts archives by extension. Supports:
+    .tar.gz, .tgz  -> tar xzf
+    .tar.bz2       -> tar xjf
+    .tar.xz        -> tar xJf
+    .tar.zst       -> tar --zstd -xf
+    .tar           -> tar xf
+    .zip           -> unzip
+    .gz (alone)    -> gunzip
+    .bz2           -> bunzip2
+    .xz            -> xz -d
+    .zst           -> zstd -d
+    .7z            -> 7z x
+    .rar           -> unrar x
+
+  With no args, lists extractable files in current dir and prompts.
+EOF
+    exit 0
+}
+
+extract_one() {
+    local f="$1"
+    [[ ! -f "$f" ]] && { echo "Not a file: $f"; return 1; }
+    local base="${f%.*}"
+    local ext=""
+    case "$f" in
+        *.tar.gz|*.tgz)  tar xzf "$f" ;;
+        *.tar.bz2)       tar xjf "$f" ;;
+        *.tar.xz)        tar xJf "$f" ;;
+        *.tar.zst)       tar --zstd -xf "$f" 2>/dev/null || zstd -d -c "$f" | tar xf - ;;
+        *.tar)           tar xf "$f" ;;
+        *.zip)           unzip "$f" ;;
+        *.gz)            gunzip -k "$f" 2>/dev/null || gzip -dk "$f" ;;
+        *.bz2)           bunzip2 -k "$f" 2>/dev/null || bzip2 -dk "$f" ;;
+        *.xz)            xz -dk "$f" ;;
+        *.zst)           zstd -dk "$f" ;;
+        *.7z)            7z x "$f" 2>/dev/null || 7za x "$f" ;;
+        *.rar)           unrar x "$f" 2>/dev/null || echo "Install unrar"; return 1 ;;
+        *)               echo "Unknown format: $f"; return 1 ;;
+    esac
+}
+
+run_interactive() {
+    local files=()
+    for f in *.tar.gz *.tgz *.tar.bz2 *.tar.xz *.tar.zst *.tar *.zip *.gz *.bz2 *.xz *.zst *.7z *.rar 2>/dev/null; do
+        [[ -f "$f" ]] && files+=("$f")
+    done
+    [[ ${#files[@]} -eq 0 ]] && { echo "No extractable archives in current dir."; exit 1; }
+    echo "Extractable files:"
+    select f in "${files[@]}" "Cancel"; do
+        [[ "$f" == "Cancel" || -z "$f" ]] && exit 0
+        extract_one "$f" && echo "Extracted: $f" && exit 0
+    done
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    "")
+        run_interactive
+        ;;
+    *)
+        for f in "$@"; do
+            extract_one "$f" && echo "Extracted: $f" || exit 1
+        done
+        ;;
+esac

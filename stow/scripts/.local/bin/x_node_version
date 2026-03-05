@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# x_node_version - Show Node/npm/pnpm versions, suggest fnm/nvm if missing
+# Usage: x_node_version
+
+usage() {
+    cat <<'EOF'
+Usage: x_node_version
+
+  Shows Node.js, npm, pnpm versions. Suggests fnm/nvm if node missing.
+EOF
+    exit 0
+}
+
+cmd_show() {
+    if command -v node &>/dev/null; then
+        echo "node:  $(node -v)"
+        command -v npm &>/dev/null && echo "npm:   $(npm -v)"
+        command -v pnpm &>/dev/null && echo "pnpm:  $(pnpm -v 2>/dev/null || echo 'installed')"
+        command -v yarn &>/dev/null && echo "yarn:  $(yarn -v 2>/dev/null || echo 'installed')"
+    else
+        echo "Node.js not found."
+        echo "Install with: fnm (fast) or nvm"
+        echo "  fnm: curl -fsSL https://fnm.vercel.app/install | bash"
+        echo "  nvm: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
+    fi
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) cmd_show ;;
+esac

@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# x_ramdisk - tmpfs/RAM disk manager (create, list, unmount)
+# Usage: x_ramdisk [create|list|unmount] [ARGS]   or run with no args for menu
+
+usage() {
+    cat <<'EOF'
+Usage: x_ramdisk [COMMAND] [ARGS]
+
+  create [SIZE] [MOUNT]   Create tmpfs. SIZE e.g. 512M, 1G. MOUNT e.g. /mnt/ramdisk.
+                          If omitted, prompts interactively.
+  list                    List mounted tmpfs (excluding /sys, /dev)
+  unmount <MOUNT>         Unmount and remove mount point. Prompts if MOUNT omitted.
+
+Run with no args for interactive menu.
+EOF
+    exit 0
+}
+
+cmd_create() {
+    local size="$1" mount="$2"
+    if [[ -z "$size" ]]; then
+        read -rp "Size (e.g. 512M, 1G): " size
+        [[ -z "$size" ]] && { echo "Aborted."; exit 1; }
+    fi
+    if [[ -z "$mount" ]]; then
+        read -rp "Mount point (e.g. /mnt/ramdisk): " mount
+        [[ -z "$mount" ]] && { echo "Aborted."; exit 1; }
+    fi
+    sudo mkdir -p "$mount"
+    sudo mount -t tmpfs -o size="$size" tmpfs "$mount"
+    echo "Mounted $size at $mount"
+}
+
+cmd_list() {
+    echo "Mounted tmpfs (excluding system):"
+    mount 2>/dev/null | grep tmpfs | grep -v '/sys' | grep -v '/dev' || echo "(none)"
+}
+
+cmd_unmount() {
+    local mount="$1"
+    if [[ -z "$mount" ]]; then
+        cmd_list
+        echo ""
+        read -rp "Mount point to unmount: " mount
+        [[ -z "$mount" ]] && { echo "Aborted."; exit 1; }
+    fi
+    sudo umount "$mount" && sudo rmdir "$mount"
+    echo "Unmounted $mount"
+}
+
+run_menu() {
+    while true; do
+        echo ""
+        echo "1) Create ramdisk"
+        echo "2) List mounted ramdisks"
+        echo "3) Unmount ramdisk"
+        echo "4) Exit"
+        read -rp "Choice: " choice
+        case "$choice" in
+            1) cmd_create ;;
+            2) cmd_list ;;
+            3) cmd_unmount ;;
+            4) exit 0 ;;
+            *) echo "Invalid." ;;
+        esac
+    done
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    create)    cmd_create "$2" "$3" ;;
+    list)      cmd_list ;;
+    unmount)   cmd_unmount "$2" ;;
+    menu|"")   cmd_list; run_menu ;;
+    *)         echo "Unknown: $1"; usage ;;
+esac

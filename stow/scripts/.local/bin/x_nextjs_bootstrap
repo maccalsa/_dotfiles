@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+  cat <<'EOF'
+Usage: x_nextjs_bootstrap [-n NAME]
+
+Creates a Next.js app with: Prisma, Shadcn UI, tRPC, Inngest, OpenAI.
+
+Options:
+  -n, --name NAME   Project name (skip prompt)
+
+Run from the directory where you want the project created.
+EOF
+  exit 0
+}
+
+# Parse -n/--name
+PROJECT_NAME_ARG=""
+[[ "$1" == "-n" || "$1" == "--name" ]] && [[ -n "${2:-}" ]] && { PROJECT_NAME_ARG="$2"; shift 2; }
+
 # --------- Error Handling ---------
 cleanup_on_error() {
   if [[ -d "${project_name:-}" ]]; then
@@ -70,7 +88,11 @@ pnpm_version=$(pnpm -v)
 version_compare "$pnpm_version" "10.0.0" || abort "pnpm >=10 required."
 
 # --------- Project Name ---------
-read -rp "Enter the project name: " project_name
+if [[ -n "$PROJECT_NAME_ARG" ]]; then
+  project_name="$PROJECT_NAME_ARG"
+else
+  read -rp "Enter the project name: " project_name
+fi
 [[ -z "$project_name" ]] && abort "Project name required."
 [[ -e "$project_name" ]] && abort "Directory '$project_name' exists."
 validate_project_name "$project_name"
@@ -101,8 +123,13 @@ echo "📦 Installing Prisma dependencies..."
 pnpm add -D prisma tsx
 pnpm add @prisma/client @prisma/extension-accelerate
 
+# Determine Prisma provider from URL
+PRISMA_PROVIDER="postgres"
+[[ "$db_url" == *"sqlite"* ]] && PRISMA_PROVIDER="sqlite"
+[[ "$db_url" == *"mysql"* ]] && PRISMA_PROVIDER="mysql"
+
 echo "🔧 Initializing Prisma..."
-pnpm dlx prisma init --datasource-provider sqlite
+pnpm dlx prisma init --datasource-provider "$PRISMA_PROVIDER"
 
 # Overwrite .env with example
 cat > .env <<EOF
@@ -122,7 +149,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgres"
+  provider = "$PRISMA_PROVIDER"
   url      = env("DATABASE_URL")
 }
 

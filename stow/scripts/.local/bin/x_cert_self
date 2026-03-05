@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# x_cert_self - Generate self-signed cert for local dev
+# Usage: x_cert_self [DOMAIN] [OUTDIR]
+
+usage() {
+    cat <<'EOF'
+Usage: x_cert_self [DOMAIN] [OUTDIR]
+
+  Generates self-signed cert + key for local dev (localhost, *.localhost).
+  DOMAIN defaults to localhost. OUTDIR defaults to current dir.
+  Creates DOMAIN.crt and DOMAIN.key.
+EOF
+    exit 0
+}
+
+cmd_gen() {
+    local domain="${1:-localhost}"
+    local outdir="${2:-.}"
+    command -v openssl &>/dev/null || { echo "openssl required."; exit 1; }
+
+    mkdir -p "$outdir"
+    local crt="$outdir/${domain}.crt"
+    local key="$outdir/${domain}.key"
+
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout "$key" -out "$crt" \
+        -subj "/CN=$domain" \
+        -addext "subjectAltName=DNS:${domain},DNS:*.${domain},DNS:localhost,IP:127.0.0.1" 2>/dev/null \
+        || openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout "$key" -out "$crt" \
+            -subj "/CN=$domain"
+
+    echo "Created: $crt, $key"
+    echo "Use in dev server or add to system trust for HTTPS."
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) cmd_gen "$1" "$2" ;;
+esac

@@ -59,7 +59,7 @@ switch_to_remote() {
 
 init_project() {
   REPO_NAME=$2
-  if [ -z "$REPO_NAME" ]; then error "Please provide a repo name: ./core-script.sh init my-repo"; fi
+  if [ -z "$REPO_NAME" ]; then error "Usage: x_monokit init <repo-name>"; fi
 
   echo "🚀 Initializing monorepo: $REPO_NAME"
   mkdir "$REPO_NAME"
@@ -256,20 +256,20 @@ show_help() {
   echo "🚀 Monokit - TypeScript Monorepo Management Tool"
   echo "================================================"
   echo
-  echo "Usage: monokit <command> [options]"
+  echo "Usage: x_monokit <command> [options]"
   echo
   echo "Commands:"
   echo "  init <project-name>           Initialize a new monorepo"
   echo "  add lib <name>                Add a new library"
   echo "  add app <name>                Add a new application"
   echo "  switch <pkg> <type> <mode>   Switch dependencies (local/remote)"
-  echo "  help, --help, -h             Show this help message"
+  echo "  help, --help, -h              Show this help"
   echo
   echo "Examples:"
-  echo "  monokit init my-project"
-  echo "  monokit add lib utils"
-  echo "  monokit add app web-app"
-  echo "  monokit switch utils lib local"
+  echo "  x_monokit init my-project"
+  echo "  x_monokit add lib utils"
+  echo "  x_monokit add app web-app"
+  echo "  x_monokit switch utils lib local"
   echo
   echo "For more information, visit: https://github.com/logimos/monokit"
 }
@@ -277,7 +277,7 @@ show_help() {
 add_lib() {
   LIB_NAME=$3
   if [ -z "$LIB_NAME" ]; then
-    error "Usage: ./core-script.sh add lib <lib-name>"
+    error "Usage: x_monokit add lib <lib-name>"
   fi
 
   # Check if we're in a workspace by looking for pnpm-workspace.yaml
@@ -406,7 +406,7 @@ EOL
 add_app() {
   APP_NAME=$3
   if [ -z "$APP_NAME" ]; then
-    error "Usage: ./core-script.sh add app <app-name>"
+    error "Usage: x_monokit add app <app-name>"
   fi
 
   # Check if we're in a workspace by looking for pnpm-workspace.yaml
@@ -433,7 +433,10 @@ add_app() {
 
   mkdir -p "$DEST/src"
 
-  # Source the modular app creation scripts
+  # Source the modular app creation scripts (require monokit-files)
+  if [[ ! -d "$SCRIPT_DIR/monokit-files" ]]; then
+    error "add app requires monokit-files/ (cli-app.sh, express-app.sh, etc.). Not found."
+  fi
   source "$SCRIPT_DIR/monokit-files/cli-app.sh"
   source "$SCRIPT_DIR/monokit-files/express-app.sh"
   source "$SCRIPT_DIR/monokit-files/vite-app.sh"

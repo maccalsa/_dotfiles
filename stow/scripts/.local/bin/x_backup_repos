@@ -10,27 +10,23 @@ SLEEP_SECONDS=1                               # pause between destructive ops
 # ========= Helpers =========
 usage() {
   cat <<'EOF'
-Usage:
-  backup_and_cleanup_repos.sh -f repos.txt [--no-dry-run] [--archive-instead] [--backup-dir DIR] [--sleep N]
+Usage: x_backup_repos -f FILE [OPTIONS]
 
-Where repos.txt contains one full repo name per line, e.g.:
+Backup GitHub repos (mirror + tar) then optionally archive or delete them.
+
+Input file: one owner/repo per line, e.g.:
   myorg/old-repo-one
-  myorg/experiment-2021
   myuser/scratchpad
 
-Flags:
-  -f, --file FILE           Input file with owner/repo per line (required)
-  --no-dry-run              Actually delete (or archive) repos after zipping
-  --archive-instead         Archive the repos (set archived=true) instead of deleting
-  --backup-dir DIR          Directory to store backups (default: ./repo-backups)
-  --sleep N                 Seconds to sleep between delete/archive ops (default: 1)
-  -h, --help                Show this help
+Options:
+  -f, --file FILE       Input file (required)
+  --no-dry-run          Actually archive/delete (default: dry-run only)
+  --archive-instead     Archive repos instead of deleting
+  --backup-dir DIR      Where to store backups (default: ./repo-backups)
+  --sleep N             Seconds between destructive ops (default: 1)
+  -h, --help            Show this help
 
-Requirements:
-  - gh (GitHub CLI) authenticated with sufficient permissions
-  - git
-  - zip
-  - sha256sum (or shasum fallback on macOS)
+Requirements: gh (GitHub CLI), git, tar, sha256sum or shasum
 EOF
 }
 
@@ -73,7 +69,7 @@ if [[ ! -f "$INPUT_FILE" ]]; then
 fi
 
 # ========= Pre-flight checks =========
-for bin in gh git zip; do
+for bin in gh git tar; do
   if ! exists "$bin"; then
     err "Required tool not found in PATH: $bin"
     exit 2
@@ -111,9 +107,7 @@ while IFS= read -r full_name; do
   name="${repo##*/}"
 
   # Paths
-  mirror_dir="$BACKUP_DIR/mirrors/${owner}__${name}.git"  # .git suffix for mirror clarity
-  zip_path="$BACKUP_DIR/zips/${owner}__${name}_$(date +'%Y%m%d').zip"
-
+  mirror_dir="$BACKUP_DIR/mirrors/${owner}__${name}.git"
   log "[$i] Processing $repo"
 
   # Clone mirror (full history)

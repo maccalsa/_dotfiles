@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# x_tunnel - SSH port forwarding (local or remote)
+# Wraps ssh -L and ssh -R with clearer flags
+
+usage() {
+    cat <<'EOF'
+Usage: x_tunnel -t TYPE -l LOCAL -r REMOTE -s SERVER [OPTIONS]
+
+Local forwarding (access remote service via jump host):
+  -t local -l LOCAL -r REMOTE -d DEST -s SERVER [-u USER]
+  Forward local port LOCAL to DEST:REMOTE through SERVER.
+  Example: x_tunnel -t local -l 8080 -r 80 -d internal.web -s jump.example.com
+
+Remote forwarding (expose local service on remote host):
+  -t remote -l LOCAL -r REMOTE -s SERVER [-u USER]
+  Expose local port LOCAL as REMOTE on SERVER.
+  Example: x_tunnel -t remote -l 3000 -r 3000 -s jump.example.com
+
+Options:
+  -t TYPE   local | remote
+  -l PORT   Local port
+  -r PORT   Remote port
+  -d HOST   Destination host (required for local only)
+  -s HOST   SSH server (jump host)
+  -u USER   SSH user (default: current user)
+  -h        Show this help
+EOF
+    exit 0
+}
+
+[[ "$1" == "-h" || "$1" == "--help" ]] && usage
+
+while getopts ":t:l:r:d:s:u:h" opt; do
+    case $opt in
+        t) tunnel_type="$OPTARG" ;;
+        l) local_port="$OPTARG" ;;
+        r) remote_port="$OPTARG" ;;
+        d) dest_host="$OPTARG" ;;
+        s) ssh_server="$OPTARG" ;;
+        u) ssh_user="$OPTARG" ;;
+        h) usage ;;
+        \?) echo "Invalid option: -$OPTARG" >&2; exit 1 ;;
+        :) echo "Option -$OPTARG requires an argument" >&2; exit 1 ;;
+    esac
+done
+
+ssh_user="${ssh_user:-$(whoami)}"
+
+[[ -z "$tunnel_type" || -z "$local_port" || -z "$remote_port" || -z "$ssh_server" ]] && {
+    echo "Missing required: -t, -l, -r, -s" >&2
+    usage
+}
+
+case "$tunnel_type" in
+    local)
+        [[ -z "$dest_host" ]] && { echo "-d DEST required for local forwarding" >&2; exit 1; }
+        echo "Forwarding local $local_port -> $dest_host:$remote_port via $ssh_server"
+        exec ssh -L "${local_port}:${dest_host}:${remote_port}" "${ssh_user}@${ssh_server}" -N
+        ;;
+    remote)
+        echo "Forwarding remote $remote_port -> localhost:$local_port via $ssh_server"
+        exec ssh -R "${remote_port}:localhost:${local_port}" "${ssh_user}@${ssh_server}" -N
+        ;;
+    *)
+        echo "Invalid type: $tunnel_type (use local or remote)" >&2
+        exit 1
+        ;;
+esac

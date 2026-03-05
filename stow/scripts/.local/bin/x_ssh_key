@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# x_ssh_key - Generate SSH key, add to agent, copy to clipboard
+# Usage: x_ssh_key [EMAIL] [TYPE]
+
+usage() {
+    cat <<'EOF'
+Usage: x_ssh_key [EMAIL] [TYPE]
+
+  Generates SSH key with comment. TYPE: ed25519 (default) or rsa.
+  Prompts to add to agent and copy public key to clipboard (if xclip/xsel).
+
+  Examples:
+    x_ssh_key
+    x_ssh_key me@example.com
+    x_ssh_key me@example.com rsa
+EOF
+    exit 0
+}
+
+key_path() {
+    local type="${1:-ed25519}"
+    echo "$HOME/.ssh/id_${type}"
+}
+
+cmd_gen() {
+    local email="${1:-}"
+    local type="${2:-ed25519}"
+    [[ -z "$email" ]] && read -rp "Email/comment for key: " email
+    [[ -z "$email" ]] && email="$(whoami)@$(hostname)"
+
+    local path
+    path=$(key_path "$type")
+    [[ -f "$path" ]] && { echo "Key exists: $path"; read -rp "Overwrite? (y/n): " o; [[ "$o" != [Yy]* ]] && exit 1; }
+
+    case "$type" in
+        ed25519) ssh-keygen -t ed25519 -C "$email" -f "$path" -N "" ;;
+        rsa)     ssh-keygen -t rsa -b 4096 -C "$email" -f "$path" -N "" ;;
+        *)       echo "Type must be ed25519 or rsa"; exit 1 ;;
+    esac
+
+    echo "Created: ${path}"
+    ssh-add "$path" 2>/dev/null && echo "Added to agent."
+
+    if command -v xclip &>/dev/null; then
+        cat "${path}.pub" | xclip -selection clipboard 2>/dev/null && echo "Public key copied to clipboard."
+    elif command -v xsel &>/dev/null; then
+        cat "${path}.pub" | xsel --clipboard 2>/dev/null && echo "Public key copied to clipboard."
+    else
+        echo "Public key:"
+        cat "${path}.pub"
+    fi
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    *) cmd_gen "$1" "$2" ;;
+esac
