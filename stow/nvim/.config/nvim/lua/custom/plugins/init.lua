@@ -100,7 +100,7 @@ return {
       -- Setup with default config (enabled=true, logging_enabled=false)
       -- You can customize this by calling require('keycoach').setup({ ... })
       require('keycoach').setup({
-        enabled = true,          -- KeyCoach enabled by default
+        enabled = false,         -- Disabled (was: true)
         logging_enabled = false, -- Logging disabled by default (to avoid interrupting editing)
         logging_notify = false,  -- Don't show notifications for logs
         hint_cooldown = 2000,    -- 2 seconds between hints

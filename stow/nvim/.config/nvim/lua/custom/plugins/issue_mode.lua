@@ -53,6 +53,7 @@ return {
     config = function()
       local builtin = require("telescope.builtin")
       local issue_mode = require("issue_mode")
+      local cheatsheet = require("cheatsheet")
 
       vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Find files" })
       vim.keymap.set("n", "<leader>fg", builtin.live_grep, { desc = "Live grep" })
@@ -62,6 +63,12 @@ return {
       vim.keymap.set("n", "<leader>gm", issue_mode.open_modified_files, { desc = "Modified tracked files" })
       vim.keymap.set("n", "<leader>gM", issue_mode.grep_modified_files, { desc = "Grep modified tracked files" })
       vim.keymap.set("n", "<leader>gb", builtin.git_branches, { desc = "Git branches" })
+      vim.keymap.set("n", "<leader>ch", function()
+        cheatsheet.search()
+      end, { desc = "[C]heatsheet search (close after)" })
+      vim.keymap.set("n", "<leader>cH", function()
+        cheatsheet.search({ open_in_split = true })
+      end, { desc = "[C]heatsheet search (open in split)" })
     end,
   },
 
@@ -141,6 +148,7 @@ return {
         { "<leader>f",  group = "File" },
         { "<leader>g",  group = "Git / issue" },
         { "<leader>j",  group = "Harpoon (jump)" },
+        { "<leader>c",  group = "Cheatsheet" },
         { "<leader>ad", desc = "Alpha dashboard" },
       })
     end,
