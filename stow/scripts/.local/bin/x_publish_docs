@@ -1,0 +1,457 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ------------------------------------------------------------
+# publish-docs.sh
+#
+# Builds AI-friendly static docs metadata for a folder of HTML,
+# then optionally publishes it to GitHub Pages using gh CLI.
+#
+# Usage:
+#   ./publish-docs.sh \
+#     --docs-dir ./lfs-html \
+#     --repo-name lfs-docs \
+#     --owner your-github-user \
+#     --site-title "Linux From Scratch Docs" \
+#     --public
+#
+# Dry metadata generation only:
+#   ./publish-docs.sh --docs-dir ./lfs-html --base-url https://example.com
+#
+#   or
+#
+#./publish-docs.sh \
+#   --docs-dir ./lfs-html \
+#   --base-url https://docs.example.com \
+#   --no-git-init \
+#   --no-create-repo \
+#   --no-push \
+#   --no-enable-pages
+#
+# ------------------------------------------------------------
+
+DOCS_DIR=""
+REPO_NAME=""
+OWNER=""
+SITE_TITLE="Static Docs"
+BASE_URL=""
+VISIBILITY="public"
+DO_GIT_INIT="true"
+DO_CREATE_REPO="true"
+DO_PUSH="true"
+DO_ENABLE_PAGES="true"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  x_publish_docs --docs-dir PATH [options]
+
+Required:
+  --docs-dir PATH           Directory containing static HTML docs
+
+Optional:
+  --repo-name NAME          GitHub repo name
+  --owner NAME              GitHub owner/user/org
+  --site-title TITLE        Site title for llms.txt
+  --base-url URL            Explicit site base URL (skips GitHub Pages URL inference)
+  --public                  Create public repo (default)
+  --private                 Create private repo
+  --no-git-init             Do not initialise git
+  --no-create-repo          Do not create repo with gh
+  --no-push                 Do not push to remote
+  --no-enable-pages         Do not enable GitHub Pages
+  --help                    Show help
+
+Examples:
+  x_publish_docs \
+    --docs-dir ./lfs-html \
+    --repo-name lfs-docs \
+    --owner myuser \
+    --site-title "Linux From Scratch Docs"
+
+  x_publish_docs \
+    --docs-dir ./site \
+    --base-url https://docs.example.com \
+    --no-git-init \
+    --no-create-repo \
+    --no-push \
+    --no-enable-pages
+EOF
+}
+
+log() {
+  printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"
+}
+
+fail() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+}
+
+urlencode_path() {
+  # Encodes spaces and a few unsafe chars in path portions.
+  python3 - "$1" <<'PY'
+import sys
+from urllib.parse import quote
+print(quote(sys.argv[1]))
+PY
+}
+
+extract_title() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+
+m = re.search(r"<title[^>]*>(.*?)</title>", text, flags=re.IGNORECASE | re.DOTALL)
+if m:
+    title = re.sub(r"\s+", " ", m.group(1)).strip()
+    print(title)
+    raise SystemExit
+
+m = re.search(r"<h1[^>]*>(.*?)</h1>", text, flags=re.IGNORECASE | re.DOTALL)
+if m:
+    title = re.sub(r"<[^>]+>", "", m.group(1))
+    title = re.sub(r"\s+", " ", title).strip()
+    print(title)
+    raise SystemExit
+
+print(Path(sys.argv[1]).stem)
+PY
+}
+
+extract_description() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+
+meta = re.search(
+    r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']',
+    text,
+    flags=re.IGNORECASE | re.DOTALL
+)
+if meta:
+    desc = re.sub(r"\s+", " ", meta.group(1)).strip()
+    print(desc)
+    raise SystemExit
+
+# Fallback: first paragraph
+m = re.search(r"<p[^>]*>(.*?)</p>", text, flags=re.IGNORECASE | re.DOTALL)
+if m:
+    desc = re.sub(r"<[^>]+>", "", m.group(1))
+    desc = re.sub(r"\s+", " ", desc).strip()
+    print(desc[:180])
+    raise SystemExit
+
+print("Documentation page")
+PY
+}
+
+make_sitemap() {
+  local docs_dir="$1"
+  local base_url="$2"
+  local sitemap_file="$docs_dir/sitemap.xml"
+
+  log "Generating sitemap.xml"
+
+  {
+    echo '<?xml version="1.0" encoding="UTF-8"?>'
+    echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+    while IFS= read -r -d '' file; do
+      rel="${file#$docs_dir/}"
+      rel_url="$(urlencode_path "$rel")"
+      lastmod="$(date -u -r "$file" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      cat <<EOF
+  <url>
+    <loc>${base_url}/${rel_url}</loc>
+    <lastmod>${lastmod}</lastmod>
+  </url>
+EOF
+    done < <(find "$docs_dir" -type f \( -iname '*.html' -o -iname '*.htm' \) -print0 | sort -z)
+    echo '</urlset>'
+  } > "$sitemap_file"
+}
+
+make_robots() {
+  local docs_dir="$1"
+  local base_url="$2"
+
+  log "Generating robots.txt"
+
+  cat > "$docs_dir/robots.txt" <<EOF
+User-agent: *
+Allow: /
+
+Sitemap: ${base_url}/sitemap.xml
+EOF
+}
+
+make_llms() {
+  local docs_dir="$1"
+  local base_url="$2"
+  local site_title="$3"
+  local llms_file="$docs_dir/llms.txt"
+
+  log "Generating llms.txt"
+
+  {
+    echo "# ${site_title}"
+    echo
+    echo "> Static documentation site prepared for AI-assisted ingestion and browsing."
+    echo
+    echo "## Core pages"
+    echo
+
+    while IFS= read -r -d '' file; do
+      rel="${file#$docs_dir/}"
+      rel_url="$(urlencode_path "$rel")"
+      title="$(extract_title "$file")"
+      desc="$(extract_description "$file")"
+      echo "- [${title}](${base_url}/${rel_url}): ${desc}"
+    done < <(find "$docs_dir" -type f \( -iname '*.html' -o -iname '*.htm' \) -print0 | sort -z)
+
+    echo
+    echo "## Notes"
+    echo
+    echo "- The site is static HTML."
+    echo "- Prefer the root index page as the starting point."
+    echo "- Sitemap available at: ${base_url}/sitemap.xml"
+  } > "$llms_file"
+}
+
+ensure_index_exists() {
+  local docs_dir="$1"
+  [[ -f "$docs_dir/index.html" ]] || fail "No index.html found in $docs_dir"
+}
+
+git_init_if_needed() {
+  local docs_dir="$1"
+
+  if [[ "$DO_GIT_INIT" != "true" ]]; then
+    return
+  fi
+
+  log "Initialising git repo if needed"
+  cd "$docs_dir"
+
+  if [[ ! -d .git ]]; then
+    git init
+    git branch -M main
+  fi
+
+  if [[ ! -f .gitignore ]]; then
+    cat > .gitignore <<'EOF'
+.DS_Store
+Thumbs.db
+EOF
+  fi
+
+  git add .
+  if ! git diff --cached --quiet; then
+    git commit -m "Prepare docs site for publishing"
+  fi
+}
+
+create_github_repo_if_needed() {
+  local docs_dir="$1"
+  local owner="$2"
+  local repo_name="$3"
+
+  if [[ "$DO_CREATE_REPO" != "true" ]]; then
+    return
+  fi
+
+  [[ -n "$owner" ]] || fail "--owner is required when creating a GitHub repo"
+  [[ -n "$repo_name" ]] || fail "--repo-name is required when creating a GitHub repo"
+
+  log "Creating GitHub repo if needed"
+  cd "$docs_dir"
+
+  local remote_url="https://github.com/${owner}/${repo_name}.git"
+
+  if ! gh repo view "${owner}/${repo_name}" >/dev/null 2>&1; then
+    gh repo create "${owner}/${repo_name}" "--${VISIBILITY}" --source=. --remote=origin --push=false
+  else
+    if ! git remote get-url origin >/dev/null 2>&1; then
+      git remote add origin "$remote_url"
+    fi
+  fi
+}
+
+push_if_needed() {
+  local docs_dir="$1"
+
+  if [[ "$DO_PUSH" != "true" ]]; then
+    return
+  fi
+
+  log "Pushing to origin/main"
+  cd "$docs_dir"
+
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    fail "No git remote named origin configured"
+  fi
+
+  git push -u origin main
+}
+
+enable_pages_if_needed() {
+  local owner="$1"
+  local repo_name="$2"
+
+  if [[ "$DO_ENABLE_PAGES" != "true" ]]; then
+    return
+  fi
+
+  [[ -n "$owner" ]] || fail "--owner is required to enable GitHub Pages"
+  [[ -n "$repo_name" ]] || fail "--repo-name is required to enable GitHub Pages"
+
+  log "Enabling GitHub Pages from main branch root"
+
+  # This may fail harmlessly if Pages is already enabled.
+  gh api \
+    --method POST \
+    -H "Accept: application/vnd.github+json" \
+    "/repos/${owner}/${repo_name}/pages" \
+    -f source[branch]=main \
+    -f source[path]=/ >/dev/null 2>&1 || true
+}
+
+infer_github_pages_url() {
+  local owner="$1"
+  local repo_name="$2"
+  echo "https://${owner}.github.io/${repo_name}"
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --docs-dir)
+        DOCS_DIR="${2:-}"
+        shift 2
+        ;;
+      --repo-name)
+        REPO_NAME="${2:-}"
+        shift 2
+        ;;
+      --owner)
+        OWNER="${2:-}"
+        shift 2
+        ;;
+      --site-title)
+        SITE_TITLE="${2:-}"
+        shift 2
+        ;;
+      --base-url)
+        BASE_URL="${2:-}"
+        shift 2
+        ;;
+      --public)
+        VISIBILITY="public"
+        shift
+        ;;
+      --private)
+        VISIBILITY="private"
+        shift
+        ;;
+      --no-git-init)
+        DO_GIT_INIT="false"
+        shift
+        ;;
+      --no-create-repo)
+        DO_CREATE_REPO="false"
+        shift
+        ;;
+      --no-push)
+        DO_PUSH="false"
+        shift
+        ;;
+      --no-enable-pages)
+        DO_ENABLE_PAGES="false"
+        shift
+        ;;
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "Unknown argument: $1"
+        ;;
+    esac
+  done
+}
+
+main() {
+  [[ $# -eq 0 ]] && { usage; exit 0; }
+  parse_args "$@"
+
+  [[ -n "$DOCS_DIR" ]] || fail "--docs-dir is required"
+DOCS_DIR="$(cd "$DOCS_DIR" && pwd)"
+  [[ -d "$DOCS_DIR" ]] || fail "Docs directory does not exist: $DOCS_DIR"
+
+  ensure_index_exists "$DOCS_DIR"
+
+  require_cmd find
+  require_cmd sort
+  require_cmd python3
+
+  if [[ "$DO_GIT_INIT" == "true" || "$DO_CREATE_REPO" == "true" || "$DO_PUSH" == "true" || "$DO_ENABLE_PAGES" == "true" ]]; then
+    require_cmd git
+    require_cmd gh
+  fi
+
+  if [[ -z "$BASE_URL" ]]; then
+    if [[ -n "$OWNER" && -n "$REPO_NAME" ]]; then
+      BASE_URL="$(infer_github_pages_url "$OWNER" "$REPO_NAME")"
+    else
+      fail "You must provide --base-url or both --owner and --repo-name"
+    fi
+  fi
+
+  log "Docs dir: $DOCS_DIR"
+  log "Base URL: $BASE_URL"
+
+  make_sitemap "$DOCS_DIR" "$BASE_URL"
+  make_llms "$DOCS_DIR" "$BASE_URL" "$SITE_TITLE"
+  make_robots "$DOCS_DIR" "$BASE_URL"
+
+  git_init_if_needed "$DOCS_DIR"
+  create_github_repo_if_needed "$DOCS_DIR" "$OWNER" "$REPO_NAME"
+  push_if_needed "$DOCS_DIR"
+  enable_pages_if_needed "$OWNER" "$REPO_NAME"
+
+  cat <<EOF
+
+Done.
+
+Generated:
+- $DOCS_DIR/sitemap.xml
+- $DOCS_DIR/llms.txt
+- $DOCS_DIR/robots.txt
+
+Expected site URL:
+- $BASE_URL
+
+Next:
+1. Wait a minute or two for GitHub Pages to publish
+2. Open: $BASE_URL
+3. In Cursor, add the docs root URL:
+   $BASE_URL
+
+Tip:
+- Cursor will usually ingest better if the content is visible in raw HTML and not hidden behind JS widgets.
+EOF
+}
+
+main "$@"

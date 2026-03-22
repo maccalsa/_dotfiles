@@ -11,6 +11,7 @@ x_crontab|Crontab manager: list, add, delete (subcommands or menu)
 x_gradle_bootstrap|Gradle/Spring Boot wizard (-n NAME or interactive)
 x_install|Add ~/.local/bin to PATH in shell config
 x_mkdocs_init|MkDocs + GitHub Pages setup (interactive or -r/-o flags)
+x_publish_docs|Build static docs (sitemap, llms.txt, robots) and publish to GitHub Pages
 x_monokit|TypeScript monorepo CLI (init, add lib/app, switch deps)
 x_monokit_menu|Interactive menu for x_monokit (options 5-7 need monokit-files)
 x_nextjs_bootstrap|Next.js + Prisma + Shadcn + tRPC + Inngest (-n NAME or interactive)
