@@ -59,6 +59,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Set up log file before any err/log calls (required with set -u)
+mkdir -p "$BACKUP_DIR"/{zips,mirrors,logs}
+LOG_FILE="$BACKUP_DIR/logs/run_$(date +'%Y%m%d_%H%M%S').log"
+
 if [[ -z "$INPUT_FILE" ]]; then
   err "Missing required -f/--file"
   usage; exit 2
@@ -81,8 +85,6 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 2
 fi
 
-mkdir -p "$BACKUP_DIR"/{zips,mirrors,logs}
-LOG_FILE="$BACKUP_DIR/logs/run_$(date +'%Y%m%d_%H%M%S').log"
 log "Starting repo backup & cleanup"
 log "Input file: $INPUT_FILE"
 log "Backup dir: $BACKUP_DIR"
@@ -149,7 +151,7 @@ while IFS= read -r full_name; do
       fi
     else
       log "Deleting $repo"
-      if gh repo delete "$repo" --confirm >>"$LOG_FILE" 2>&1; then
+      if gh repo delete "$repo" --yes >>"$LOG_FILE" 2>&1; then
         log "Deleted: $repo"
       else
         err "Delete failed for $repo"
