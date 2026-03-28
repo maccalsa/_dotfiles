@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# x_md2pdf - Convert Markdown to PDF (md-to-pdf + optional CSS)
+
+usage() {
+  cat <<'EOF'
+Usage:
+  x_md2pdf --input <path-or-url> [--input-type md|url] [--output <file.pdf>] [--stylesheet <file.css>]
+
+Options:
+  --input         Mandatory. Local markdown file path, or HTTPS/HTTP URL to markdown.
+  --input-type    Optional. "md" (default): --input is a file path.
+                  "url": --input is a URL; body must be markdown (text/markdown,
+                  text/x-markdown, or text/plain). Fetched to a temp file.
+  --output        Optional. Output PDF path.
+                  If omitted: for files, PDF beside the input; for URLs, PDF in
+                  the current directory named from the URL path (or document.pdf).
+  --stylesheet    Optional. CSS stylesheet path.
+                  If omitted, uses default-markdown-pdf.css beside this script.
+  --help, -h      Show this help.
+
+Examples:
+  x_md2pdf --input cheatsheet.md
+  x_md2pdf --input cheatsheet.md --output cheatsheet.pdf
+  x_md2pdf --input https://example.com/raw/doc.md --input-type url
+  x_md2pdf --input https://example.com/raw/doc.md --input-type url --output out.pdf
+
+Requires: Node.js, npm, and the md-to-pdf package (npm install -g md-to-pdf),
+or run md-to-pdf via npx and ensure it is on PATH.
+EOF
+}
+
+resolve_script_dir() {
+  local source="${BASH_SOURCE[0]}"
+  while [[ -h "$source" ]]; do
+    local dir
+    dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+  cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd
+}
+
+require_command() {
+  local cmd="$1"
+  local message="$2"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Error: $message" >&2
+    exit 1
+  fi
+}
+
+require_md_to_pdf() {
+  if command -v md-to-pdf >/dev/null 2>&1; then
+    return 0
+  fi
+  cat >&2 <<'EOF'
+Error: md-to-pdf is not installed or not on PATH.
+
+Install globally:
+  npm install -g md-to-pdf
+
+Or use npx (then symlink or add npx global bin to PATH as needed):
+  npx md-to-pdf --help
+EOF
+  exit 1
+}
+
+# URL path (no query) last segment, .md stripped, safe for filenames.
+url_default_stem() {
+  local url="$1"
+  local stripped="${url%%\?*}"
+  stripped="${stripped%%#*}"
+  local seg="${stripped##*/}"
+  seg="${seg%.md}"
+  if [[ -z "$seg" || "$seg" == *"/"* ]]; then
+    seg="document"
+  fi
+  seg="${seg//[^a-zA-Z0-9._-]/_}"
+  [[ -z "$seg" ]] && seg="document"
+  printf '%s' "$seg"
+}
+
+# Returns 0 if Content-Type is acceptable for markdown; 1 if not.
+mime_is_markdown_ok() {
+  local ct="$1"
+  ct="${ct%%;*}"
+  ct="${ct%% }"
+  ct="${ct,,}"
+  case "$ct" in
+    text/markdown|text/x-markdown|text/plain) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Fetch URL to temp .md; sets TEMP_MD on success. Nice errors on HTTP/curl failures.
+fetch_url_to_temp() {
+  local url="$1"
+  local hdr body code
+  hdr="$(mktemp)"
+  body="$(mktemp --suffix=.md)"
+
+  local curl_err
+  curl_err="$(mktemp)"
+  if ! code="$(curl -sS -L --connect-timeout 30 --max-time 120 \
+    -D "$hdr" -o "$body" -w "%{http_code}" "$url" 2>"$curl_err")"; then
+    err_msg="$(cat "$curl_err" 2>/dev/null || true)"
+    rm -f "$hdr" "$body" "$curl_err"
+    echo "Error: failed to fetch URL (network, TLS, or timeout)." >&2
+    echo "  URL: $url" >&2
+    [[ -n "$err_msg" ]] && echo "  curl: $err_msg" >&2
+    exit 1
+  fi
+  rm -f "$curl_err"
+
+  if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
+    local snippet
+    snippet="$(head -c 400 "$body" 2>/dev/null | tr '\n' ' ')"
+    rm -f "$hdr" "$body"
+    echo "Error: HTTP $code when fetching URL." >&2
+    echo "  URL: $url" >&2
+    echo "  Response body (preview): ${snippet:-<empty>}" >&2
+    exit 1
+  fi
+
+  local ct=""
+  if [[ -f "$hdr" ]]; then
+    ct="$(grep -i '^content-type:' "$hdr" | head -1 | sed 's/^[Cc]ontent-[Tt]ype:[[:space:]]*//')"
+  fi
+  rm -f "$hdr"
+
+  if [[ -n "$ct" ]] && ! mime_is_markdown_ok "$ct"; then
+    echo "Error: response is not markdown (Content-Type: ${ct})." >&2
+    echo "  URL: $url" >&2
+    echo "  Expected markdown-related types: text/markdown, text/x-markdown, or text/plain." >&2
+    rm -f "$body"
+    exit 1
+  fi
+
+  if [[ -z "$ct" ]]; then
+    echo "Warning: no Content-Type header; assuming markdown body." >&2
+  fi
+
+  TEMP_MD="$body"
+}
+
+INPUT=""
+INPUT_TYPE="md"
+OUTPUT=""
+STYLESHEET=""
+TEMP_MD=""
+
+cleanup() {
+  if [[ -n "${TEMP_MD:-}" && -f "$TEMP_MD" ]]; then
+    rm -f "$TEMP_MD"
+  fi
+}
+trap cleanup EXIT
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --input)
+      [[ $# -ge 2 ]] || { echo "Error: --input requires a value." >&2; exit 1; }
+      INPUT="$2"
+      shift 2
+      ;;
+    --input-type)
+      [[ $# -ge 2 ]] || { echo "Error: --input-type requires a value." >&2; exit 1; }
+      INPUT_TYPE="$2"
+      shift 2
+      ;;
+    --output)
+      [[ $# -ge 2 ]] || { echo "Error: --output requires a value." >&2; exit 1; }
+      OUTPUT="$2"
+      shift 2
+      ;;
+    --stylesheet)
+      [[ $# -ge 2 ]] || { echo "Error: --stylesheet requires a value." >&2; exit 1; }
+      STYLESHEET="$2"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown argument: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$INPUT" ]]; then
+  echo "Error: --input is mandatory." >&2
+  usage
+  exit 1
+fi
+
+case "$INPUT_TYPE" in
+  md|file) INPUT_TYPE="md" ;;
+  url) ;;
+  *)
+    echo "Error: --input-type must be \"md\" or \"url\" (got: $INPUT_TYPE)." >&2
+    exit 1
+    ;;
+esac
+
+SCRIPT_DIR="$(resolve_script_dir)"
+DEFAULT_STYLESHEET="$SCRIPT_DIR/default-markdown-pdf.css"
+
+if [[ -z "$STYLESHEET" ]]; then
+  STYLESHEET="$DEFAULT_STYLESHEET"
+fi
+
+if [[ ! -f "$STYLESHEET" ]]; then
+  echo "Error: stylesheet not found: $STYLESHEET" >&2
+  exit 1
+fi
+
+require_command node "node is not installed or not on PATH."
+require_command npm "npm is not installed or not on PATH."
+require_md_to_pdf
+
+INPUT_ABS=""
+PDF_FROM_TOOL=""
+OUTPUT_ABS=""
+
+if [[ "$INPUT_TYPE" == "md" ]]; then
+  if [[ ! -f "$INPUT" ]]; then
+    echo "Error: input file not found: $INPUT" >&2
+    exit 1
+  fi
+  INPUT_ABS="$(cd "$(dirname "$INPUT")" >/dev/null 2>&1 && pwd)/$(basename "$INPUT")"
+  input_dir="$(dirname "$INPUT_ABS")"
+  input_file="$(basename "$INPUT_ABS")"
+  input_stem="${input_file%.*}"
+  PDF_FROM_TOOL="$input_dir/$input_stem.pdf"
+  if [[ -z "$OUTPUT" ]]; then
+    OUTPUT_ABS="$PDF_FROM_TOOL"
+  else
+    out_dir="$(cd "$(dirname "$OUTPUT")" >/dev/null 2>&1 && pwd 2>/dev/null || true)"
+    if [[ -z "$out_dir" ]]; then
+      mkdir -p "$(dirname "$OUTPUT")"
+      out_dir="$(cd "$(dirname "$OUTPUT")" >/dev/null 2>&1 && pwd)"
+    fi
+    OUTPUT_ABS="$out_dir/$(basename "$OUTPUT")"
+  fi
+else
+  require_command curl "curl is not installed or not on PATH (required for --input-type url)."
+  if [[ ! "$INPUT" =~ ^https?:// ]]; then
+    echo "Error: --input must be an http(s) URL when --input-type is url." >&2
+    echo "  Got: $INPUT" >&2
+    exit 1
+  fi
+  echo "Fetching markdown from URL..."
+  fetch_url_to_temp "$INPUT"
+  INPUT_ABS="$TEMP_MD"
+  input_dir="$(dirname "$INPUT_ABS")"
+  input_file="$(basename "$INPUT_ABS")"
+  input_stem="${input_file%.*}"
+  PDF_FROM_TOOL="$input_dir/$input_stem.pdf"
+  url_stem="$(url_default_stem "$INPUT")"
+  if [[ -z "$OUTPUT" ]]; then
+    OUTPUT_ABS="$(pwd)/${url_stem}.pdf"
+  else
+    out_dir="$(cd "$(dirname "$OUTPUT")" >/dev/null 2>&1 && pwd 2>/dev/null || true)"
+    if [[ -z "$out_dir" ]]; then
+      mkdir -p "$(dirname "$OUTPUT")"
+      out_dir="$(cd "$(dirname "$OUTPUT")" >/dev/null 2>&1 && pwd)"
+    fi
+    OUTPUT_ABS="$out_dir/$(basename "$OUTPUT")"
+  fi
+fi
+
+echo "Rendering PDF..."
+md-to-pdf "$INPUT_ABS" --stylesheet "$STYLESHEET"
+
+if [[ ! -f "$PDF_FROM_TOOL" ]]; then
+  echo "Error: expected PDF was not created: $PDF_FROM_TOOL" >&2
+  exit 1
+fi
+
+if [[ "$PDF_FROM_TOOL" != "$OUTPUT_ABS" ]]; then
+  mkdir -p "$(dirname "$OUTPUT_ABS")"
+  mv -f "$PDF_FROM_TOOL" "$OUTPUT_ABS"
+fi
+
+echo "Created: $OUTPUT_ABS"

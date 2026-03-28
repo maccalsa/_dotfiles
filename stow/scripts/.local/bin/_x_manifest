@@ -29,6 +29,7 @@ x_archive|Compress dir to tar.gz/zip (gz, bz2, xz, zst)
 x_base64|Base64 encode/decode (stdin or file)
 x_extract|Extract archives by extension (tar.gz, zip, 7z, etc.)
 x_json|Pretty-print JSON (jq or python)
+x_md2pdf|Markdown to PDF (--input, --input-type md|url, optional --output / --stylesheet)
 x_password|Generate random password (copies to clipboard if xclip)
 
 ## Docker
