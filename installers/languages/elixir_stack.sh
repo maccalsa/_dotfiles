@@ -1,9 +1,19 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
 ERLANG_VERSION="26.2.4"
 ELIXIR_VERSION="1.16.2-otp-26"
+
+if ! command -v asdf >/dev/null 2>&1; then
+  if [ -f "$HOME/.asdf/asdf.sh" ]; then
+    # shellcheck disable=SC1091
+    . "$HOME/.asdf/asdf.sh"
+  else
+    echo "asdf is required before installing Erlang and Elixir."
+    exit 1
+  fi
+fi
 
 echo "📦 Installing Erlang & Elixir using asdf..."
 

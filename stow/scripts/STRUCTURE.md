@@ -56,10 +56,6 @@ stow/scripts/
 │   ├── _nextjs_common.sh
 │   │
 │   └── code.json                  # Spring Boot starter metadata
-│
-├── .config/scripts/agemt/
-│   └── secrets-agent.sh           # Sourced at login (SSH/GPG agent)
-│
 ├── README.md
 └── STRUCTURE.md                   # This file
 ```

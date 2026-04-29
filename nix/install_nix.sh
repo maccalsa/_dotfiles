@@ -1,16 +1,10 @@
 #!/bin/bash
 
-# ─────────────────────────────────────────────
-# Set your desired stable Nixpkgs version here
-# You can change this to 24.05 later, for example
-# Check latest version at: https://status.nixos.org/
-DEFAULT_NIXPKGS_VERSION="24.11"
-read -p "Enter the Nixpkgs version to install (default: $DEFAULT_NIXPKGS_VERSION): " NIXPKGS_VERSION
-NIXPKGS_VERSION=${NIXPKGS_VERSION:-$DEFAULT_NIXPKGS_VERSION}
+set -euo pipefail
 
-CHANNEL_NAME="nixpkgs"
-CHANNEL_URL="https://nixos.org/channels/nixpkgs-${NIXPKGS_VERSION}-darwin"
-
+DEFAULT_NIXPKGS_REF="github:NixOS/nixpkgs/nixos-unstable"
+read -r -p "Enter the nixpkgs flake ref to use (default: $DEFAULT_NIXPKGS_REF): " NIXPKGS_REF
+NIXPKGS_REF=${NIXPKGS_REF:-$DEFAULT_NIXPKGS_REF}
 
 # ─────────────────────────────────────────────
 # Install Nix (multi-user / daemon mode)
@@ -33,47 +27,67 @@ elif [ -f "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
 fi
 
 # ─────────────────────────────────────────────
-# Add stable channel
+# Enable modern Nix commands for this user
 # ─────────────────────────────────────────────
+mkdir -p "$HOME/.config/nix"
+NIX_CONF="$HOME/.config/nix/nix.conf"
+touch "$NIX_CONF"
 
-if ! nix-channel --list | grep -q "^${CHANNEL_NAME}"; then
-  echo "📦 Adding Nixpkgs ${NIXPKGS_VERSION} channel..."
-  nix-channel --add "$CHANNEL_URL" "$CHANNEL_NAME"
-else
-  echo "🔄 Updating existing channel: $CHANNEL_NAME"
+if ! grep -q '^experimental-features = .*nix-command.*flakes' "$NIX_CONF"; then
+  echo "experimental-features = nix-command flakes" >> "$NIX_CONF"
 fi
-
-nix-channel --update
 
 # ─────────────────────────────────────────────
 # Install tools (with modern CLI)
 # ─────────────────────────────────────────────
 echo "📦 Installing dev tools via Nix..."
-nix --extra-experimental-features 'nix-command flakes' profile install \
-  nixpkgs#fzf \
-  nixpkgs#zoxide \
-  nixpkgs#bat \
-  nixpkgs#pay-respects \
-  nixpkgs#lazydocker \
-  nixpkgs#lazygit \
-  nixpkgs#fd \
-  nixpkgs#httpie \
-  nixpkgs#eza \
-  nixpkgs#jq \
-  nixpkgs#lsof \
-  nixpkgs#kind \
-  nixpkgs#kubectl \
-  nixpkgs#kubernetes-helm \
-  nixpkgs#bottom \
-  nixpkgs#jsonnet \
-  nixpkgs#bun \
-  nixpkgs#ctlptl \
-  nixpkgs#navi \
-  nixpkgs#glow \
-  nixpkgs#ripgrep \
-  nixpkgs#espanco \
-  nixpkgs#gh \
-  nixpkgs#zip \
+
+packages=(
+  "$NIXPKGS_REF#atuin"
+  "$NIXPKGS_REF#bat"
+  "$NIXPKGS_REF#bottom"
+  "$NIXPKGS_REF#bun"
+  "$NIXPKGS_REF#ctlptl"
+  "$NIXPKGS_REF#delta"
+  "$NIXPKGS_REF#difftastic"
+  "$NIXPKGS_REF#direnv"
+  "$NIXPKGS_REF#dust"
+  "$NIXPKGS_REF#eza"
+  "$NIXPKGS_REF#fd"
+  "$NIXPKGS_REF#fzf"
+  "$NIXPKGS_REF#gh"
+  "$NIXPKGS_REF#glow"
+  "$NIXPKGS_REF#gum"
+  "$NIXPKGS_REF#httpie"
+  "$NIXPKGS_REF#hyperfine"
+  "$NIXPKGS_REF#jq"
+  "$NIXPKGS_REF#jsonnet"
+  "$NIXPKGS_REF#just"
+  "$NIXPKGS_REF#kind"
+  "$NIXPKGS_REF#kubectl"
+  "$NIXPKGS_REF#kubernetes-helm"
+  "$NIXPKGS_REF#lazydocker"
+  "$NIXPKGS_REF#lazygit"
+  "$NIXPKGS_REF#lsof"
+  "$NIXPKGS_REF#mprocs"
+  "$NIXPKGS_REF#navi"
+  "$NIXPKGS_REF#nix-direnv"
+  "$NIXPKGS_REF#pay-respects"
+  "$NIXPKGS_REF#procs"
+  "$NIXPKGS_REF#ripgrep"
+  "$NIXPKGS_REF#sd"
+  "$NIXPKGS_REF#starship"
+  "$NIXPKGS_REF#tealdeer"
+  "$NIXPKGS_REF#tokei"
+  "$NIXPKGS_REF#viddy"
+  "$NIXPKGS_REF#watchexec"
+  "$NIXPKGS_REF#xh"
+  "$NIXPKGS_REF#yq-go"
+  "$NIXPKGS_REF#zip"
+  "$NIXPKGS_REF#zoxide"
+)
+
+nix --extra-experimental-features 'nix-command flakes' profile install "${packages[@]}"
 
 echo "✅ Done installing Nix tools."
 
@@ -83,7 +97,8 @@ echo "------------------------------------------------------------"
 echo "If you just installed Nix for the first time:"
 echo
 echo "👉 Please start a new shell session, then run:"
-echo "   nix-shell -p nix-info --run \"nix-info -m\""
+echo "   nix --version"
+echo "   nix profile list"
 echo
 echo "This will confirm your installation and environment is working."
 echo "------------------------------------------------------------"

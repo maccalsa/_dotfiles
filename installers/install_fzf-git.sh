@@ -7,4 +7,8 @@ set -e
 
 echo "Installing fzf-git"
 
-git clone git@github.com:junegunn/fzf-git.sh.git ~/.fzf-git
+if [ ! -d "$HOME/.fzf-git" ]; then
+  git clone https://github.com/junegunn/fzf-git.sh.git "$HOME/.fzf-git"
+else
+  echo "fzf-git already installed."
+fi

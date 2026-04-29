@@ -1,29 +1,21 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
-# post_install_software.sh
-#
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-## Configure bat
+stow_package() {
+  local package="$1"
 
-echo "💡 Configuring bat"
-stow --dir=stow --target="$HOME" bat
-bat cache --build
-# > `bat --list-themes | fzf --preview="bat --theme={} --color=always /path/to/file"`
+  echo "Stowing $package"
+  stow --dir="$SCRIPT_DIR/stow" --target="$HOME" "$package"
+}
 
-# Configure neovim
-echo "💡 Configuring neovim"
-stow --dir=stow --target="$HOME" nvim
+stow_package bat
+if command -v bat >/dev/null 2>&1; then
+  bat cache --build
+fi
 
-echo "💡 Configuring git"
-stow --dir=stow --target="$HOME" git
-
-echo "💡 Configuring bashhub"
-stow --dir=stow --target="$HOME" bashhub
-
-echo "💡 Configuring espanso"
-stow --dir=stow --target="$HOME" epsanso
-espanso service register
-expanso start
+stow_package nvim
+stow_package git
 
