@@ -1,69 +1,123 @@
 #!/bin/bash
 
-set -e
+# Docker Engine + Compose plugin on Ubuntu-based systems (including Pop!_OS).
+# Uses Docker's signed-by repo (not deprecated apt-key).
+# Full purge before reinstall: bash installers/uninstall_reset_docker.sh -y
 
-# install_docker.sh
-#
-# This script installs and configures Docker and Docker Compose.
+set -euo pipefail
 
-# Update package index
+# Docker's bridge driver uses iptables. On Ubuntu/Pop!_OS, iptables v1.8 defaults
+# to the nf_tables backend; a broken netlink/nft cache causes:
+#   "Could not fetch rule set generation id: Invalid argument"
+# and docker.service fails while creating the DOCKER NAT chain.
+# Prefer iptables-legacy before the first docker start (safe on stock Debian/Ubuntu).
+prefer_iptables_legacy() {
+  local legacy nft legacy6 nft6
+
+  legacy="/usr/sbin/iptables-legacy"
+  nft="/usr/sbin/iptables-nft"
+  legacy6="/usr/sbin/ip6tables-legacy"
+  nft6="/usr/sbin/ip6tables-nft"
+
+  if [[ ! -x "$legacy" ]]; then
+    echo "Note: $legacy not found; skipping iptables legacy selection."
+    return 0
+  fi
+
+  echo "Selecting iptables-legacy for /usr/sbin/iptables (reduces nf_tables issues with Docker)..."
+  sudo update-alternatives --install /usr/sbin/iptables iptables "$legacy" 100 2>/dev/null || true
+  if [[ -x "$nft" ]]; then
+    sudo update-alternatives --install /usr/sbin/iptables iptables "$nft" 50 2>/dev/null || true
+  fi
+  sudo update-alternatives --set iptables "$legacy"
+
+  if [[ -x "$legacy6" ]]; then
+    echo "Selecting ip6tables-legacy for /usr/sbin/ip6tables..."
+    sudo update-alternatives --install /usr/sbin/ip6tables ip6tables "$legacy6" 100 2>/dev/null || true
+    if [[ -x "$nft6" ]]; then
+      sudo update-alternatives --install /usr/sbin/ip6tables ip6tables "$nft6" 50 2>/dev/null || true
+    fi
+    sudo update-alternatives --set ip6tables "$legacy6"
+  fi
+
+  if ! sudo iptables -t nat -L -n >/dev/null 2>&1; then
+    echo "WARN: iptables -t nat still errors after selecting legacy; check kernel/nft state or reboot." >&2
+  fi
+}
+
 echo "Updating package index..."
-sudo apt update
+sudo apt-get update
 
-# Install prerequisites
 echo "Installing prerequisites..."
-sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+sudo apt-get install -y ca-certificates curl gnupg iptables
 
-# Add Docker's official GPG key
-echo "Adding Docker's official GPG key..."
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+echo "Adding Docker apt keyring..."
+sudo install -m 0755 -d /etc/apt/keyrings
+if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+fi
 
-# Add Docker's official repository
-echo "Adding Docker's official repository..."
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+# Pop!_OS: UBUNTU_CODENAME matches the Ubuntu base Docker packages use.
+# Pure Ubuntu: VERSION_CODENAME is enough.
+# shellcheck disable=SC1091
+. /etc/os-release
+DOCKER_CODENAME="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+if [[ -z "$DOCKER_CODENAME" ]]; then
+  echo "Error: could not detect Ubuntu codename (UBUNTU_CODENAME / VERSION_CODENAME)." >&2
+  exit 1
+fi
 
-# Update package index again
-echo "Updating package index again..."
-sudo apt update
+echo "Using Docker apt suite: ${DOCKER_CODENAME} (arch $(dpkg --print-architecture))"
 
-# Install Docker
-echo "Installing Docker..."
-sudo apt install -y docker-ce
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${DOCKER_CODENAME} stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Verify Docker installation
-echo "Verifying Docker installation..."
+echo "Updating package index (Docker repo)..."
+sudo apt-get update
+
+echo "Installing Docker Engine, CLI, containerd, Buildx, Compose plugin..."
+sudo apt-get install -y \
+  docker-ce \
+  docker-ce-cli \
+  containerd.io \
+  docker-buildx-plugin \
+  docker-compose-plugin
+
+echo "Verifying binaries..."
 docker --version
+docker compose version
 
-# Enable Docker service
-echo "Enabling Docker service..."
-sudo systemctl enable docker
+echo "Kernel modules for bridge/overlay (best effort)..."
+sudo modprobe br_netfilter 2>/dev/null || true
+sudo modprobe bridge 2>/dev/null || true
+sudo modprobe overlay 2>/dev/null || true
 
-# Start Docker service
-echo "Starting Docker service..."
-sudo systemctl start docker
+prefer_iptables_legacy
 
-# Install Docker Compose
-echo "Installing Docker Compose..."
-DOCKER_COMPOSE_VERSION="1.29.2"
-sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+echo "Enabling and starting docker.service..."
+sudo systemctl enable docker.service
+if ! sudo systemctl restart docker.service; then
+  echo >&2
+  echo "docker.service failed to start. Last log lines:" >&2
+  sudo journalctl -u docker.service -b -n 60 --no-pager >&2 || true
+  echo >&2
+  echo "Common Pop!_OS / Ubuntu checks:" >&2
+  echo "  - sudo journalctl -u docker.service -b -e" >&2
+  echo "  - sudo dockerd --validate" >&2
+  echo "  - sudo iptables -V   (expect legacy, not nf_tables)" >&2
+  echo "  - sudo iptables -t nat -L -n" >&2
+  echo "  - Conflicts: dpkg -l | grep -E 'docker|containerd|podman'" >&2
+  echo "  - Stale data: only after backup, try sudo rm -rf /var/lib/docker (nuclear)" >&2
+  exit 1
+fi
 
-# Apply executable permissions to the Docker Compose binary
-echo "Applying executable permissions to Docker Compose..."
-sudo chmod +x /usr/local/bin/docker-compose
+echo "Smoke test (hello-world, needs network)..."
+if ! sudo docker run --rm hello-world; then
+  echo "WARN: hello-world pull/run failed; docker may still be OK. Try: sudo docker ps" >&2
+fi
 
-# Verify Docker Compose installation
-echo "Verifying Docker Compose installation..."
-docker-compose --version
-
-echo "Docker and Docker Compose have been installed and configured successfully."
-
-# Add the current user to the 'docker' group to allow running Docker commands without sudo
-echo "Adding the current user to the 'docker' group..."
+echo "Adding user to docker group (log out and back in for full effect)..."
 sudo usermod -aG docker "$USER"
 
-# Inform the user to log out and back in for the group change to take effect
-echo "Please log out and log back in to apply the group changes."
-
-
-
-
+echo "Done. Use: docker compose up   (Compose v2 plugin)."

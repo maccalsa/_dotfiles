@@ -30,7 +30,7 @@ stow --dir=stow --target="$HOME" --delete <package>
 
 | Package | Purpose | Notes |
 | --- | --- | --- |
-| `cursor` | Cursor user settings | Stow manually after installing Cursor if desired. |
+| `cursor` | Cursor user settings | Stow manually, or confirm the stow prompt in `install_desktop_apps.sh`. |
 
 ## Removed Packages
 

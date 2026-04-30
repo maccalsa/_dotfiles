@@ -38,6 +38,11 @@ run_step "Installing Docker" "$SCRIPT_DIR/installers/install_docker.sh"
 run_step "Installing Neovim" "$SCRIPT_DIR/installers/install_neovim.sh"
 run_step "Installing Go/npm helper tools" "$SCRIPT_DIR/installers/install_tools.sh"
 run_step "Installing curated Nix CLI tools" "$SCRIPT_DIR/nix/install_nix.sh"
+
+if ask_yes_no "Install desktop apps (Remmina, Cursor IDE, Cursor CLI, snap + Telegram)?"; then
+  run_step "Installing desktop GUI apps" "$SCRIPT_DIR/installers/install_desktop_apps.sh"
+fi
+
 run_step "Stowing app configuration" "$SCRIPT_DIR/post_install_software.sh"
 
 echo

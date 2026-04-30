@@ -36,7 +36,8 @@ Install the rest of the developer environment:
 3. `backup/restore_keys.sh` restores SSH and GPG keys when setting up a fresh
    machine.
 4. `install_software.sh` installs languages, tmux, fzf-git, Docker, Neovim,
-   helper tools, Nix CLI tools, and app config.
+   helper tools, Nix CLI tools, optionally Remmina/Cursor/Cursor CLI/snap/Telegram,
+   then app config.
 5. `post_install_software.sh` stows app configuration for tools that should be
    active after install.
 

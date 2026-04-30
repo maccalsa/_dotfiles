@@ -32,13 +32,19 @@ This repo targets Ubuntu/Linux. Run the scripts from the repo root.
    - Installs Docker and Neovim.
    - Installs helper tools that require Go/npm.
    - Installs curated Nix CLI tools.
+   - Optionally installs desktop GUI stack: Remmina (apt), Cursor IDE (download +
+     AppImage under `/opt`, `cursor` on `PATH`), Cursor CLI (`agent` via official
+     install script), `snapd` + Telegram Desktop (`snap`).
    - Stows active app configs.
 
 ## Optional Installers
 
-These are present but not part of the main pipeline:
+These are present but only run during `install_software.sh` when you confirm the
+prompt, or run the script manually:
 
-- `installers/install_cursor.sh`
+- `installers/install_desktop_apps.sh` — Remmina, Cursor, Cursor CLI, snap,
+  Telegram; uses `install_cursor.sh` internally for the IDE AppImage.
+- `installers/install_cursor.sh` — Cursor IDE only.
 - `installers/install_dbeaver.sh`
 - `installers/install_intellij.sh`
 - `installers/languages/install_ada.sh`
