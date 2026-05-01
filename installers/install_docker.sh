@@ -11,6 +11,27 @@ set -euo pipefail
 #   "Could not fetch rule set generation id: Invalid argument"
 # and docker.service fails while creating the DOCKER NAT chain.
 # Prefer iptables-legacy before the first docker start (safe on stock Debian/Ubuntu).
+load_docker_kernel_modules() {
+  local module
+  local modules=(
+    br_netfilter
+    bridge
+    overlay
+    ip_tables
+    iptable_filter
+    iptable_nat
+    iptable_mangle
+    iptable_raw
+    nf_conntrack
+    nf_nat
+  )
+
+  echo "Loading kernel modules Docker commonly needs (best effort)..."
+  for module in "${modules[@]}"; do
+    sudo modprobe "$module" 2>/dev/null || true
+  done
+}
+
 prefer_iptables_legacy() {
   local legacy nft legacy6 nft6
 
@@ -41,7 +62,9 @@ prefer_iptables_legacy() {
   fi
 
   if ! sudo iptables -t nat -L -n >/dev/null 2>&1; then
-    echo "WARN: iptables -t nat still errors after selecting legacy; check kernel/nft state or reboot." >&2
+    echo "WARN: iptables -t nat still errors after selecting legacy." >&2
+    echo "      If it says \"Table does not exist\", your kernel did not expose iptable_nat." >&2
+    echo "      Try rebooting after the kernel/modules package update, then rerun this script." >&2
   fi
 }
 
@@ -88,11 +111,7 @@ echo "Verifying binaries..."
 docker --version
 docker compose version
 
-echo "Kernel modules for bridge/overlay (best effort)..."
-sudo modprobe br_netfilter 2>/dev/null || true
-sudo modprobe bridge 2>/dev/null || true
-sudo modprobe overlay 2>/dev/null || true
-
+load_docker_kernel_modules
 prefer_iptables_legacy
 
 echo "Enabling and starting docker.service..."
