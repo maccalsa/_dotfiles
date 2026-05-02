@@ -50,13 +50,30 @@ PKGS=(
 
 sudo apt install -y "${PKGS[@]}"
 
-echo "⬇️ Installing asdf..."
+ASDF_VERSION="${ASDF_VERSION:-0.18.1}"
+ASDF_INSTALL_DIR="${ASDF_INSTALL_DIR:-$HOME/.local/bin}"
 
-if [ ! -d "$HOME/.asdf" ]; then
-    git clone https://github.com/asdf-vm/asdf.git "$HOME/.asdf" --branch v0.14.0
-else
-    echo "✅ asdf already installed."
-fi
+echo "⬇️ Installing asdf ${ASDF_VERSION}..."
+
+case "$(uname -m)" in
+  x86_64) ASDF_ARCH="amd64" ;;
+  aarch64 | arm64) ASDF_ARCH="arm64" ;;
+  i386 | i686) ASDF_ARCH="386" ;;
+  *)
+    echo "Unsupported architecture for asdf binary install: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+mkdir -p "$ASDF_INSTALL_DIR"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+
+curl -fsSL \
+  "https://github.com/asdf-vm/asdf/releases/download/v${ASDF_VERSION}/asdf-v${ASDF_VERSION}-linux-${ASDF_ARCH}.tar.gz" \
+  -o "$tmp_dir/asdf.tar.gz"
+tar -xzf "$tmp_dir/asdf.tar.gz" -C "$tmp_dir"
+install -m 0755 "$tmp_dir/asdf" "$ASDF_INSTALL_DIR/asdf"
 
 echo "🔗 Configuring shell..."
 
@@ -66,10 +83,13 @@ if ! grep -q 'asdf setup' "$shell_config" 2>/dev/null; then
     {
         echo ''
         echo '# asdf setup'
-        echo '. "$HOME/.asdf/asdf.sh"'
+        echo 'export PATH="$HOME/.local/bin:$HOME/.asdf/shims:$PATH"'
     } >> "$shell_config"
 fi
 
-echo "✅ asdf installed successfully. Reload your shell or run:"
-echo "source $shell_config"
+export PATH="$HOME/.local/bin:$HOME/.asdf/shims:$PATH"
+
+echo "✅ asdf installed successfully:"
+asdf --version
+echo "Reload your shell or run: source $shell_config"
 

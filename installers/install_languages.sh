@@ -42,12 +42,15 @@ if ask_yes_no "Do you want to install Rust?"; then
 fi
 
 if ask_yes_no "Do you want to install Elixir and Erlang?"; then
-  if ! command -v asdf >/dev/null 2>&1 && [ ! -x "$HOME/.asdf/bin/asdf" ]; then
+  export PATH="$HOME/.local/bin:$HOME/.asdf/shims:$PATH"
+
+  if ! command -v asdf >/dev/null 2>&1; then
     bash "${SCRIPT_DIR}/install_asdf.sh"
+    export PATH="$HOME/.local/bin:$HOME/.asdf/shims:$PATH"
   fi
 
-  # Make asdf available in this script even before the user opens a new shell.
-  if [ -f "$HOME/.asdf/asdf.sh" ]; then
+  # Keep compatibility with older git-clone asdf installs.
+  if ! command -v asdf >/dev/null 2>&1 && [ -f "$HOME/.asdf/asdf.sh" ]; then
     # shellcheck disable=SC1091
     . "$HOME/.asdf/asdf.sh"
   fi

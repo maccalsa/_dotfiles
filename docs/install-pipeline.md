@@ -30,7 +30,6 @@ This repo targets Ubuntu/Linux. Run the scripts from the repo root.
    - Installs tmux and fzf-git.
    - Optionally installs `pass` and clones the password store.
    - Installs Docker and Neovim.
-   - Installs helper tools that require Go/npm.
    - Installs curated Nix CLI tools.
    - Optionally installs desktop GUI stack: Remmina (apt), Cursor IDE (download +
      AppImage under `/opt`, `cursor` on `PATH`), Cursor CLI (`agent` via official
@@ -69,3 +68,6 @@ Ada is intentionally left manual until its installer is made idempotent.
 
 Espanso and bashhub are no longer installed or stowed. If they are needed again,
 add them back deliberately with a working installer and documentation.
+
+`installers/install_tools.sh` is kept for manual one-off use, but is no longer
+part of the active `install_software.sh` flow.

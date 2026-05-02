@@ -2,7 +2,11 @@
 
 set -euo pipefail
 
-PHX_VERSION="1.7.12"
+PHX_VERSION="${PHX_VERSION:-1.8.5}"
+
+if ! command -v mix >/dev/null 2>&1; then
+  export PATH="$HOME/.local/bin:$HOME/.asdf/shims:$PATH"
+fi
 
 if ! command -v mix >/dev/null 2>&1 && [ -f "$HOME/.asdf/asdf.sh" ]; then
   # shellcheck disable=SC1091
