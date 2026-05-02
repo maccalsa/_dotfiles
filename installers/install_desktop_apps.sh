@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Optional GUI stack: Remmina (apt), Cursor desktop + symlink, Cursor CLI (agent),
+# Optional GUI stack: Remmina (apt), Cursor desktop (apt), Cursor CLI (agent),
 # snapd + Telegram Desktop (snap). Run from repo root via install_software.sh or
 # directly: bash installers/install_desktop_apps.sh
 
@@ -31,7 +31,7 @@ if ask_yes_no "Install Remmina (remote desktop client via apt)?"; then
   sudo apt install -y remmina remmina-plugin-rdp remmina-plugin-vnc
 fi
 
-if ask_yes_no "Install Cursor desktop (AppImage to /opt, cursor on PATH)?"; then
+if ask_yes_no "Install Cursor desktop (apt package)?"; then
   bash "$SCRIPT_DIR/install_cursor.sh"
   if ask_yes_no "Stow Cursor IDE user settings from stow/cursor?"; then
     stow --dir="$REPO_ROOT/stow" --target="$HOME" cursor
