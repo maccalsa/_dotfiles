@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# x_gh_ruleset_lock - Create/update a GitHub repo ruleset that protects the default branch
+
+RULESET_NAME="${RULESET_NAME:-protect-default-branch}"
+DRY_RUN=true
+MODE="strict"
+REVIEW_COUNT=1
+SLEEP_SECONDS=0.3
+INPUT_FILE=""
+
+usage() {
+  cat <<'EOF'
+Usage: x_gh_ruleset_lock -f FILE [OPTIONS]
+
+For each owner/repo line in FILE, create or update a repository ruleset that
+targets the repo default branch (~DEFAULT_BRANCH) via the GitHub Rulesets API.
+
+Input file (same style as x_backup_repos): one owner/repo per line, e.g.:
+  myorg/service-api
+  myuser/dotfiles
+
+Modes:
+  soft    Block branch deletion and force-push (non-fast-forward).
+  strict  soft + restrict direct pushes to users with bypass (update rule).
+          Default.
+  pr      soft + require pull request before merge (--reviews sets count).
+
+Options:
+  -f, --file FILE       Input file (required)
+  --no-dry-run          Apply changes (default: print actions only)
+  --name NAME           Ruleset name (default: protect-default-branch)
+  --mode MODE           soft | strict | pr (default: strict)
+  --reviews N           Approving reviews required for --mode pr (default: 1)
+  --sleep N             Seconds between API calls (default: 0.3)
+  -h, --help            Show this help
+
+Requirements: gh (authenticated), jq
+
+Bypass: add actors in the GitHub UI or extend this script; org admins typically
+have bypass unless you tighten actor lists.
+EOF
+}
+
+err() { printf '%s [ERROR] %s\n' "$(date +'%F %T')" "$*" >&2; }
+log() { printf '%s %s\n' "$(date +'%F %T')" "$*"; }
+exists() { command -v "$1" >/dev/null 2>&1; }
+
+build_rules_json() {
+  local mode="$1"
+  local reviews="$2"
+  case "$mode" in
+    soft)
+      jq -n '[{"type":"deletion"},{"type":"non_fast_forward"}]'
+      ;;
+    strict)
+      jq -n '[
+        {"type":"deletion"},
+        {"type":"non_fast_forward"},
+        {"type":"update","parameters":{"update_allows_fetch_and_merge":true}}
+      ]'
+      ;;
+    pr)
+      jq -n --argjson n "$reviews" '[
+        {"type":"deletion"},
+        {"type":"non_fast_forward"},
+        {"type":"pull_request","parameters":{
+          "allowed_merge_methods":["merge","squash","rebase"],
+          "dismiss_stale_reviews_on_push":false,
+          "require_code_owner_review":false,
+          "require_last_push_approval":false,
+          "required_approving_review_count":$n,
+          "required_review_thread_resolution":false
+        }}
+      ]'
+      ;;
+    *)
+      err "Invalid mode: $mode (use soft, strict, or pr)"
+      return 1
+      ;;
+  esac
+}
+
+build_body() {
+  local name="$1"
+  local rules_json="$2"
+  jq -n \
+    --arg name "$name" \
+    --argjson rules "$rules_json" \
+    '{
+      name: $name,
+      target: "branch",
+      enforcement: "active",
+      conditions: {ref_name: {include: ["~DEFAULT_BRANCH"], exclude: []}},
+      rules: $rules
+    }'
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -f|--file) INPUT_FILE="$2"; shift 2;;
+    --no-dry-run) DRY_RUN=false; shift;;
+    --name) RULESET_NAME="$2"; shift 2;;
+    --mode) MODE="$2"; shift 2;;
+    --reviews) REVIEW_COUNT="$2"; shift 2;;
+    --sleep) SLEEP_SECONDS="$2"; shift 2;;
+    -h|--help) usage; exit 0;;
+    *) err "Unknown argument: $1"; usage; exit 2;;
+  esac
+done
+
+if [[ -z "$INPUT_FILE" ]]; then
+  err "Missing required -f/--file"
+  usage
+  exit 2
+fi
+if [[ ! -f "$INPUT_FILE" ]]; then
+  err "Input file not found: $INPUT_FILE"
+  exit 2
+fi
+
+for bin in gh jq; do
+  if ! exists "$bin"; then
+    err "Required tool not found in PATH: $bin"
+    exit 2
+  fi
+done
+
+if ! gh auth status >/dev/null 2>&1; then
+  err "GitHub CLI not authenticated. Run: gh auth login"
+  exit 2
+fi
+
+case "$MODE" in
+  soft|strict|pr) ;;
+  *) err "Invalid --mode: $MODE"; usage; exit 2;;
+esac
+
+if ! [[ "$REVIEW_COUNT" =~ ^[0-9]+$ ]] || [[ "$REVIEW_COUNT" -lt 0 ]]; then
+  err "--reviews must be a non-negative integer"
+  exit 2
+fi
+
+RULES_JSON=$(build_rules_json "$MODE" "$REVIEW_COUNT") || exit 2
+BODY_JSON=$(build_body "$RULESET_NAME" "$RULES_JSON") || exit 2
+
+log "Input file: $INPUT_FILE"
+log "Ruleset name: $RULESET_NAME"
+log "Mode: $MODE"
+log "Run: $( $DRY_RUN && echo 'DRY RUN (use --no-dry-run to apply)' || echo 'LIVE' )"
+
+i=0
+while IFS= read -r full_name; do
+  [[ -z "$full_name" || "$full_name" =~ ^[[:space:]]*# ]] && continue
+  repo="${full_name//[$'\t\r\n ']/}"
+  if [[ ! "$repo" =~ .+/.+ ]]; then
+    err "Skipping invalid repo name (expect owner/repo): '$repo'"
+    continue
+  fi
+  i=$((i + 1))
+  owner="${repo%%/*}"
+  name="${repo##*/}"
+
+  gh_err="${TMPDIR:-/tmp}/x_gh_ruleset_lock.$$.${i}.err"
+  if ! rules_out="$(gh api "repos/${owner}/${name}/rulesets" --paginate 2>"$gh_err")"; then
+    detail="$(tr '\n' ' ' <"$gh_err" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    rm -f "$gh_err"
+    err "[$i] Cannot list rulesets for $repo${detail:+ — $detail} (repo must exist; token needs admin/rulesets, e.g. fine-grained Administration read+write)"
+    continue
+  fi
+  rm -f "$gh_err"
+
+  if ! existing_id="$(printf '%s' "$rules_out" | jq -r --arg n "$RULESET_NAME" '.[] | select(.name == $n) | .id' | head -n1)"; then
+    err "[$i] Cannot parse rulesets JSON for $repo (unexpected gh api response)"
+    continue
+  fi
+
+  if $DRY_RUN; then
+    if [[ -n "$existing_id" ]]; then
+      log "[$i] DRY RUN: would PUT ruleset id=$existing_id on $repo"
+    else
+      log "[$i] DRY RUN: would POST new ruleset on $repo"
+    fi
+    continue
+  fi
+
+  if [[ -n "$existing_id" ]]; then
+    log "[$i] Updating ruleset #$existing_id on $repo"
+    if ! gh api --method PUT "repos/${owner}/${name}/rulesets/${existing_id}" \
+      --input - <<<"$BODY_JSON" >/dev/null; then
+      err "Failed to update ruleset on $repo"
+    fi
+  else
+    log "[$i] Creating ruleset on $repo"
+    if ! gh api --method POST "repos/${owner}/${name}/rulesets" \
+      --input - <<<"$BODY_JSON" >/dev/null; then
+      err "Failed to create ruleset on $repo"
+    fi
+  fi
+
+  sleep "$SLEEP_SECONDS"
+done < "$INPUT_FILE"
+
+log "Done processing $i repo(s)."
