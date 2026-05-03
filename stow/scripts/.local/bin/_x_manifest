@@ -23,6 +23,7 @@ x_ramdisk|tmpfs/RAM disk: create, list, unmount (subcommands or menu)
 x_spring_init|Quick Spring Boot from start.spring.io (-n NAME or interactive)
 x_ts_lib_create|TypeScript library scaffold (tsup, ESLint, Vitest)
 x_tunnel|SSH tunnel: local/remote port forwarding
+x_vm_pop_test|Create/delete Pop!_OS libvirt VM for testing dotfiles installs
 x_yt|YouTube/video downloader (yt-dlp or youtube-dl)
 
 ## Utilities

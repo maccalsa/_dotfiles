@@ -1,0 +1,339 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# x_vm_pop_test - Create a Pop!_OS libvirt VM for testing dotfiles install scripts
+
+DEFAULT_ISO="$HOME/Downloads/pop-os_24.04_amd64_generic_24.iso"
+DEFAULT_NAME="pop-build-test"
+DEFAULT_RAM_MB="8192"
+DEFAULT_VCPUS="4"
+DEFAULT_DISK_GB="80"
+DEFAULT_CONNECT="qemu:///session"
+DEFAULT_NETWORK="user,model=virtio"
+DEFAULT_OS_VARIANT="ubuntu24.04"
+
+VM_NAME="$DEFAULT_NAME"
+ISO_PATH="$DEFAULT_ISO"
+RAM_MB="$DEFAULT_RAM_MB"
+VCPUS="$DEFAULT_VCPUS"
+DISK_GB="$DEFAULT_DISK_GB"
+CONNECT_URI="$DEFAULT_CONNECT"
+NETWORK="$DEFAULT_NETWORK"
+OS_VARIANT="$DEFAULT_OS_VARIANT"
+DISK_PATH=""
+OPERATION="create"
+RECREATE=false
+DRY_RUN=false
+NO_AUTOCONSOLE=true
+ASSUME_YES=false
+KEEP_STORAGE=false
+
+usage() {
+  cat <<'EOF'
+Usage:
+  x_vm_pop_test create [OPTIONS]
+  x_vm_pop_test delete [OPTIONS]
+  x_vm_pop_test [OPTIONS]          # same as "create"
+
+Create a Pop!_OS VM with virt-install/libvirt for testing dotfiles install scripts.
+Defaults use a user-session libvirt VM so the disk can live under your home dir.
+
+Commands:
+  create                  Create and start the Pop!_OS installer VM (default)
+  delete                  Destroy and undefine the VM, removing its disk by default
+
+Options:
+  --name NAME             VM name (default: pop-build-test)
+  --iso PATH              ISO path (default: ~/Downloads/pop-os_24.04_amd64_generic_24.iso)
+  --ram MB                Memory in MiB (default: 8192)
+  --vcpus N               Virtual CPUs (default: 4)
+  --disk-size GB          Disk size in GiB (default: 80)
+  --disk PATH             Disk path (default: ~/.local/share/libvirt/images/NAME.qcow2)
+  --connect URI           Libvirt URI (default: qemu:///session)
+  --network SPEC          virt-install network spec (default: user,model=virtio)
+  --os-variant VARIANT    OS variant (default: ubuntu24.04)
+  --recreate              Destroy/undefine existing VM and remove its managed disk
+  --keep-storage          With delete, undefine the VM but keep its disk
+  -y, --yes               Do not prompt before delete
+  --console               Attach console after starting installer
+  --dry-run               Print virt-install command without running it
+  -h, --help              Show this help
+
+Examples:
+  x_vm_pop_test
+  x_vm_pop_test delete --yes
+  x_vm_pop_test --name pop-test-2 --ram 12288 --disk-size 120
+  x_vm_pop_test --connect qemu:///system --network default --recreate
+
+Requirements:
+  virt-install, virsh, qemu/KVM, and a working libvirt session.
+  On Ubuntu/Pop!_OS, install packages such as:
+    sudo apt install virt-manager virtinst qemu-kvm libvirt-daemon-system libvirt-clients
+EOF
+}
+
+err() {
+  printf 'Error: %s\n' "$*" >&2
+}
+
+exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+expand_path() {
+  local path="$1"
+  case "$path" in
+    "~") printf '%s\n' "$HOME" ;;
+    "~/"*) printf '%s/%s\n' "$HOME" "${path#~/}" ;;
+    *) printf '%s\n' "$path" ;;
+  esac
+}
+
+require_deps() {
+  local missing=()
+
+  exists virt-install || missing+=("virt-install")
+  exists virsh || missing+=("virsh")
+
+  if ((${#missing[@]} > 0)); then
+    err "Missing required command(s): ${missing[*]}"
+    cat >&2 <<'EOF'
+Install libvirt tooling first, for example:
+  sudo apt install virt-manager virtinst qemu-kvm libvirt-daemon-system libvirt-clients
+EOF
+    exit 1
+  fi
+}
+
+vm_exists() {
+  virsh --connect "$CONNECT_URI" dominfo "$VM_NAME" >/dev/null 2>&1
+}
+
+recreate_vm() {
+  if ! vm_exists; then
+    return
+  fi
+
+  printf 'Recreating existing VM: %s\n' "$VM_NAME"
+  virsh --connect "$CONNECT_URI" destroy "$VM_NAME" >/dev/null 2>&1 || true
+  virsh --connect "$CONNECT_URI" undefine "$VM_NAME" --remove-all-storage >/dev/null 2>&1 ||
+    virsh --connect "$CONNECT_URI" undefine "$VM_NAME" >/dev/null
+}
+
+confirm_delete() {
+  if $ASSUME_YES; then
+    return
+  fi
+
+  local answer
+  read -r -p "Delete VM '$VM_NAME'? This will remove its disk unless --keep-storage is set. Type 'yes' to continue: " answer
+  if [ "$answer" != "yes" ]; then
+    echo "Delete cancelled."
+    exit 0
+  fi
+}
+
+delete_vm() {
+  require_deps
+
+  if ! vm_exists; then
+    err "VM does not exist: $VM_NAME"
+    exit 1
+  fi
+
+  confirm_delete
+
+  printf 'Deleting VM: %s\n' "$VM_NAME"
+  virsh --connect "$CONNECT_URI" destroy "$VM_NAME" >/dev/null 2>&1 || true
+
+  if $KEEP_STORAGE; then
+    virsh --connect "$CONNECT_URI" undefine "$VM_NAME"
+    echo "VM undefined. Storage kept."
+    return
+  fi
+
+  if ! virsh --connect "$CONNECT_URI" undefine "$VM_NAME" --remove-all-storage; then
+    virsh --connect "$CONNECT_URI" undefine "$VM_NAME"
+    if [ -f "$DISK_PATH" ]; then
+      rm -f "$DISK_PATH"
+      printf 'Removed disk: %s\n' "$DISK_PATH"
+    fi
+  fi
+
+  echo "VM deleted."
+}
+
+parse_args() {
+  while (($# > 0)); do
+    case "$1" in
+      create)
+        OPERATION="create"
+        shift
+        ;;
+      delete)
+        OPERATION="delete"
+        shift
+        ;;
+      --name)
+        VM_NAME="${2:-}"
+        shift 2
+        ;;
+      --iso)
+        ISO_PATH="${2:-}"
+        shift 2
+        ;;
+      --ram)
+        RAM_MB="${2:-}"
+        shift 2
+        ;;
+      --vcpus)
+        VCPUS="${2:-}"
+        shift 2
+        ;;
+      --disk-size)
+        DISK_GB="${2:-}"
+        shift 2
+        ;;
+      --disk)
+        DISK_PATH="${2:-}"
+        shift 2
+        ;;
+      --connect)
+        CONNECT_URI="${2:-}"
+        shift 2
+        ;;
+      --network)
+        NETWORK="${2:-}"
+        shift 2
+        ;;
+      --os-variant)
+        OS_VARIANT="${2:-}"
+        shift 2
+        ;;
+      --recreate)
+        RECREATE=true
+        shift
+        ;;
+      --keep-storage)
+        KEEP_STORAGE=true
+        shift
+        ;;
+      -y | --yes)
+        ASSUME_YES=true
+        shift
+        ;;
+      --console)
+        NO_AUTOCONSOLE=false
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        err "Unknown option: $1"
+        usage >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
+validate_number() {
+  local label="$1"
+  local value="$2"
+
+  if [[ ! "$value" =~ ^[0-9]+$ ]] || [ "$value" -le 0 ]; then
+    err "$label must be a positive integer: $value"
+    exit 1
+  fi
+}
+
+main() {
+  parse_args "$@"
+
+  ISO_PATH="$(expand_path "$ISO_PATH")"
+  if [ -z "$DISK_PATH" ]; then
+    DISK_PATH="$HOME/.local/share/libvirt/images/${VM_NAME}.qcow2"
+  fi
+  DISK_PATH="$(expand_path "$DISK_PATH")"
+
+  if [ "$OPERATION" = "delete" ]; then
+    delete_vm
+    return
+  fi
+
+  validate_number "--ram" "$RAM_MB"
+  validate_number "--vcpus" "$VCPUS"
+  validate_number "--disk-size" "$DISK_GB"
+
+  if [ ! -f "$ISO_PATH" ]; then
+    err "ISO not found: $ISO_PATH"
+    exit 1
+  fi
+
+  require_deps
+
+  if $RECREATE; then
+    recreate_vm
+  elif vm_exists; then
+    err "VM already exists: $VM_NAME (use --recreate to replace it)"
+    exit 1
+  fi
+
+  local cmd=(
+    virt-install
+    --connect "$CONNECT_URI"
+    --name "$VM_NAME"
+    --memory "$RAM_MB"
+    --vcpus "$VCPUS"
+    --cpu host
+    --disk "path=${DISK_PATH},size=${DISK_GB},bus=virtio,format=qcow2"
+    --cdrom "$ISO_PATH"
+    --os-variant "$OS_VARIANT"
+    --network "$NETWORK"
+    --graphics spice
+    --video virtio
+    --sound ich9
+  )
+
+  if $NO_AUTOCONSOLE; then
+    cmd+=(--noautoconsole)
+  fi
+
+  printf 'VM:       %s\n' "$VM_NAME"
+  printf 'ISO:      %s\n' "$ISO_PATH"
+  printf 'Disk:     %s (%s GiB)\n' "$DISK_PATH" "$DISK_GB"
+  printf 'Connect:  %s\n' "$CONNECT_URI"
+  printf 'Network:  %s\n\n' "$NETWORK"
+
+  if $DRY_RUN; then
+    printf 'Dry run command:\n'
+    printf '  %q' "${cmd[@]}"
+    printf '\n'
+    return
+  fi
+
+  mkdir -p "$(dirname "$DISK_PATH")"
+
+  "${cmd[@]}"
+
+  cat <<EOF
+
+VM created and installer started.
+
+Open it with:
+  virt-manager --connect "$CONNECT_URI" --show-domain-console "$VM_NAME"
+
+After installing Pop!_OS in the VM, clone or copy this dotfiles repo and run:
+  ./bootstrap.sh
+  ./zsh_setup.sh
+  ./install_software.sh
+EOF
+}
+
+main "$@"
