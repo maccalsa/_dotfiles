@@ -131,12 +131,18 @@ if ! sudo systemctl restart docker.service; then
   exit 1
 fi
 
+echo "Adding user to docker group..."
+sudo usermod -aG docker "$USER"
+
 echo "Smoke test (hello-world, needs network)..."
-if ! sudo docker run --rm hello-world; then
+echo "Using sg docker so the new group applies in this session (avoids needing sudo for this check)."
+if command -v sg >/dev/null 2>&1 && sg docker -c "docker run --rm hello-world"; then
+  :
+elif ! sudo docker run --rm hello-world; then
   echo "WARN: hello-world pull/run failed; docker may still be OK. Try: sudo docker ps" >&2
 fi
 
-echo "Adding user to docker group (log out and back in for full effect)..."
-sudo usermod -aG docker "$USER"
-
-echo "Done. Use: docker compose up   (Compose v2 plugin)."
+echo
+echo "Done. Compose v2: docker compose up"
+echo "Your login shell still has the old group list until you log out and back in (or run: newgrp docker)."
+echo "Until then, use: sg docker -c 'docker ...'   or   sudo docker ..."

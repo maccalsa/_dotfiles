@@ -28,6 +28,9 @@ export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
 # Make sure Go is working
 go version
 
+go_bin="$(go env GOPATH)/bin"
+export PATH="$PATH:$go_bin"
+
 # Wire (from Google)
 go install github.com/google/wire/cmd/wire@latest
 
@@ -37,6 +40,7 @@ go install github.com/a-h/templ/cmd/templ@latest
 # Air (live-reload for Go projects)
 go install github.com/air-verse/air@latest
 
-wire help
-templ version
-air --version
+# Sanity checks (same shell has GOPATH/bin on PATH; air uses -v, not --version)
+"$go_bin/wire" help >/dev/null
+"$go_bin/templ" version
+"$go_bin/air" -v >/dev/null
