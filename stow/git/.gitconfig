@@ -14,6 +14,31 @@
     undo = reset HEAD~1 --mixed
     rollback = reset --hard
 
+    # Short logs (complements lg)
+    l5 = log --oneline -5
+    l10 = log --oneline -10
+
+    # Safe force-push (refuses if remote moved; not plain --force)
+    pf = push --force-with-lease
+
+    # Stage / diff
+    aa = add --all
+    ds = diff --staged
+    patch = add -p
+
+    # Modern branch checkout (Git 2.23+)
+    sw = switch
+
+    # Stash
+    sp = stash push
+    pop = stash pop
+
+    # Recent branches by last commit
+    recent-branches = branch --sort=-committerdate
+
+    # Remote cleanup (drops stale tracking branches)
+    prune = remote prune origin
+
 [color]
     ui = auto
 
@@ -48,6 +73,7 @@
 
 [push]
     default = current
+    autoSetupRemote = true
 
 [pull]
     rebase = false
