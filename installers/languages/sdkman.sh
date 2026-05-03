@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+# set -euo pipefail
 
-JAVA_MAJOR_VERSION="${JAVA_MAJOR_VERSION:-21}"
+JAVA_MAJOR_VERSION="${JAVA_MAJOR_VERSION:-25}"
 
 # Install SDKMAN
 if [ ! -s "$HOME/.sdkman/bin/sdkman-init.sh" ]; then
   curl -fsSL "https://get.sdkman.io" | bash
 fi
 
-# Load SDKMAN (for this script session)
+# Load SDKMAN (for this script session). SDKMAN init checks many vars with
+# `[ -z "$VAR" ]`; with bash nounset (-u) those expands fail before -z runs.
+set +u
 # shellcheck disable=SC1091
 . "$HOME/.sdkman/bin/sdkman-init.sh"
 
@@ -30,3 +32,5 @@ sdk default java "$JAVA_VERSION"
 
 # Install Kotlin
 sdk install kotlin
+
+set -u
