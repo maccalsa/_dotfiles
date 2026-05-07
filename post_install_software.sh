@@ -16,6 +16,9 @@ if command -v bat >/dev/null 2>&1; then
   bat cache --build
 fi
 
-stow_package nvim
+#stow_package nvim
 stow_package git
+
+# ~/.local/bin: x_* tools, x_ launcher, _x_manifest (same as zsh_setup.sh)
+stow_package scripts
 

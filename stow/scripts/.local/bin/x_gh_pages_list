@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# x_gh_pages_list - List repos that have GitHub Pages enabled (owner/repo -> site URL)
+
+LIMIT=1000
+SLEEP_SECONDS=0.15
+OWNER=""
+
+usage() {
+  cat <<'EOF'
+Usage: x_gh_pages_list [OWNER]
+       x_gh_pages_list --owner OWNER
+
+For each repository from `gh repo list`, query the Pages API and print lines for
+repos where GitHub Pages is enabled:
+
+  owner/repo -> https://...
+
+With no OWNER, lists repos for the authenticated user. With OWNER (org or user),
+lists that account's repos (same as: gh repo list OWNER).
+
+Options:
+  --owner OWNER    Same as positional OWNER (use if name starts with -)
+  --limit N        Max repos to scan (default: 1000)
+  --sleep SEC      Pause between Pages API calls (default: 0.15)
+  -h, --help       Show this help
+
+Examples:
+  x_gh_pages_list
+  x_gh_pages_list logimos
+  x_gh_pages_list --limit 500 --sleep 0.2 myorg
+
+Requirements: gh (authenticated), jq
+EOF
+}
+
+err() { printf '%s\n' "Error: $*" >&2; }
+exists() { command -v "$1" >/dev/null 2>&1; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --owner)
+      OWNER="${2:-}"
+      shift 2
+      ;;
+    --limit)
+      LIMIT="${2:-}"
+      shift 2
+      ;;
+    --sleep)
+      SLEEP_SECONDS="${2:-}"
+      shift 2
+      ;;
+    -*)
+      err "Unknown option: $1"
+      usage
+      exit 2
+      ;;
+    *)
+      if [[ -n "$OWNER" ]]; then
+        err "Unexpected argument: $1 (owner already set)"
+        usage
+        exit 2
+      fi
+      OWNER="$1"
+      shift
+      ;;
+  esac
+done
+
+if ! exists gh; then
+  err "gh not found in PATH"
+  exit 2
+fi
+if ! exists jq; then
+  err "jq not found in PATH"
+  exit 2
+fi
+if ! gh auth status >/dev/null 2>&1; then
+  err "GitHub CLI not authenticated. Run: gh auth login"
+  exit 2
+fi
+
+if [[ -z "$LIMIT" || ! "$LIMIT" =~ ^[0-9]+$ ]]; then
+  err "--limit must be a positive integer"
+  exit 2
+fi
+
+list_repos_json() {
+  if [[ -n "$OWNER" ]]; then
+    gh repo list "$OWNER" --limit "$LIMIT" --json nameWithOwner --jq '.[].nameWithOwner'
+  else
+    gh repo list --limit "$LIMIT" --json nameWithOwner --jq '.[].nameWithOwner'
+  fi
+}
+
+while IFS= read -r repo || [[ -n "${repo:-}" ]]; do
+  [[ -z "$repo" ]] && continue
+  url=""
+  if pages_json=$(gh api "repos/${repo}/pages" 2>/dev/null); then
+    url=$(printf '%s\n' "$pages_json" | jq -r '.html_url // empty')
+  fi
+  if [[ -n "$url" ]]; then
+    printf '%s -> %s\n' "$repo" "$url"
+  fi
+  # Avoid hammering the API when scanning hundreds of repos
+  sleep "$SLEEP_SECONDS"
+done < <(list_repos_json)
