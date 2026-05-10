@@ -25,15 +25,17 @@ fi
 gpgconf --launch gpg-agent
 
 if [ -d "$HOME/.ssh" ]; then
-    for key in "$HOME/.ssh/"*; do
-        if [[ -f "$key" && "$key" != *.pub ]]; then
-            fingerprint=$(ssh-keygen -lf "$key" | awk '{print $2}')
-            if ! ssh-add -l | grep -q "$fingerprint"; then
-                echo "Adding SSH key: $key"
-                ssh-add "$key" > /dev/null
-            fi
+    # Only standard private key names (id_*), not config / known_hosts / authorized_keys.
+    # Add ssh-add lines for other paths yourself if you use custom key filenames.
+    while IFS= read -r key; do
+        [[ -z "$key" || ! -f "$key" ]] && continue
+        fingerprint=$(ssh-keygen -lf "$key" 2>/dev/null | awk '{print $2}')
+        [[ -z "$fingerprint" ]] && continue
+        if ! ssh-add -l 2>/dev/null | grep -qF "$fingerprint"; then
+            echo "Adding SSH key: $key"
+            ssh-add "$key" > /dev/null
         fi
-    done
+    done < <(find "$HOME/.ssh" -maxdepth 1 -type f \( -name 'id_*' ! -name '*.pub' \) 2>/dev/null | sort)
 
     chmod 700 "$HOME/.ssh"
     find "$HOME/.ssh" -type f -name "id_*" -exec chmod 600 {} \;

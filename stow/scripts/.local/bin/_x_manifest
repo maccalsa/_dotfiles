@@ -8,6 +8,7 @@ x_backup|Tar backup: local or ssh (subcommands or menu)
 x_guar_ghous|Ultimate disk nuke: Nix, Docker, caches, apt, node_modules (interactive)
 x_backup_repos|Backup GitHub repos (mirror+tar), then archive or delete
 x_gh_ruleset_lock|GitHub rulesets: lock default branch from owner/repo file (-f, --mode soft|strict|pr)
+x_gh_pages_list|List repos with GitHub Pages (optional owner, --limit, --sleep)
 x_crontab|Crontab manager: list, add, delete (subcommands or menu)
 x_gradle_bootstrap|Gradle/Spring Boot wizard (-n NAME or interactive)
 x_install|Add ~/.local/bin to PATH in shell config

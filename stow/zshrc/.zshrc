@@ -120,9 +120,10 @@ command -v lazydocker &>/dev/null && alias ld='lazydocker'
 ### ─── Cursor ─────────────────────────────────────────────────────────────────
 #alias cursor='/opt/cursor.AppImage --no-sandbox'
 
+alias xx='chmod +x '
 ### ---- Pay respects ----------------------------------------------------------
 eval "$(pay-respects bash)"
 
 # asdf setup
-. "$HOME/.asdf/asdf.sh"
-. "$HOME/.asdf/completions/asdf.bash"
+# . "$HOME/.asdf/asdf.sh"
+# . "$HOME/.asdf/completions/asdf.bash"
