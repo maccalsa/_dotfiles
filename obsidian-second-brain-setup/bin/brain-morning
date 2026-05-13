@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VAULT="${SECOND_BRAIN:-$HOME/SecondBrain}"
+
+echo "Vault: $VAULT"
+echo
+
+if command -v obsidian >/dev/null 2>&1; then
+  echo "Opening daily note via Obsidian CLI..."
+  obsidian daily || true
+
+  echo "Appending morning review tasks..."
+  obsidian daily:append content="- [ ] Review 00-Inbox" || true
+  obsidian daily:append content="- [ ] Review unresolved agent notes" || true
+  obsidian daily:append content="- [ ] Promote one useful note to 05-Permanent" || true
+else
+  echo "Obsidian CLI not found. Creating a plain Markdown daily note instead."
+  DAILY="$VAULT/01-Daily/$(date +%Y-%m-%d).md"
+  mkdir -p "$(dirname "$DAILY")"
+  touch "$DAILY"
+  {
+    echo ""
+    echo "## Morning review"
+    echo "- [ ] Review 00-Inbox"
+    echo "- [ ] Review unresolved agent notes"
+    echo "- [ ] Promote one useful note to 05-Permanent"
+  } >> "$DAILY"
+  echo "Daily note: $DAILY"
+fi
+
+echo
+echo "Recent inbox notes:"
+find "$VAULT/00-Inbox" -type f -name "*.md" | sort | tail -20 || true
+
+echo
+echo "Recent agent research logs:"
+find "$VAULT/06-Agent/Research-Logs" -type f -name "*.md" | sort | tail -20 || true
+
+echo
+if [ -f "$VAULT/graphify-out/GRAPH_REPORT.md" ]; then
+  echo "Graph report exists:"
+  echo "$VAULT/graphify-out/GRAPH_REPORT.md"
+else
+  echo "No graph report yet. Run:"
+  echo "cd \"$VAULT\" && graphify ."
+fi

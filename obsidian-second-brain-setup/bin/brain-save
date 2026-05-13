@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VAULT="${SECOND_BRAIN:-$HOME/SecondBrain}"
+cd "$VAULT"
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "git not found."
+  exit 1
+fi
+
+if [ ! -d ".git" ]; then
+  git init
+fi
+
+git add .
+git commit -m "Update second brain $(date +%Y-%m-%d_%H-%M)" || echo "No changes to commit"

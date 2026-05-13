@@ -1,0 +1,15 @@
+{
+  "name": "obsidian-second-brain-setup",
+  "description": "Scripts and Pi skills to set up an Obsidian-based second brain workflow.",
+  "default_vault": "~/SecondBrain",
+  "commands": [
+    "brain-capture",
+    "brain-morning",
+    "brain-graph",
+    "brain-save",
+    "brain-status",
+    "brain-open",
+    "brain-install-graphify",
+    "brain-link-obsidian-cli"
+  ]
+}

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VAULT="${SECOND_BRAIN:-$HOME/SecondBrain}"
+cd "$VAULT"
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "git not found."
+  exit 1
+fi
+
+echo "Vault: $VAULT"
+echo
+git status --short
+echo
+echo "Recent commits:"
+git log --oneline -5 || true
+echo
+echo "Uncommitted diff summary:"
+git diff --stat || true

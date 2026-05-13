@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p "$HOME/.local/bin"
+
+if command -v obsidian >/dev/null 2>&1; then
+  echo "obsidian is already on PATH:"
+  command -v obsidian
+  exit 0
+fi
+
+OS="$(uname -s)"
+
+if [ "$OS" = "Darwin" ]; then
+  CANDIDATES=(
+    "/Applications/Obsidian.app/Contents/MacOS/Obsidian CLI"
+    "$HOME/Applications/Obsidian.app/Contents/MacOS/Obsidian CLI"
+  )
+
+  for candidate in "${CANDIDATES[@]}"; do
+    if [ -x "$candidate" ]; then
+      ln -sf "$candidate" "$HOME/.local/bin/obsidian"
+      echo "Linked Obsidian CLI:"
+      echo "$HOME/.local/bin/obsidian -> $candidate"
+      exit 0
+    fi
+  done
+fi
+
+if [ "$OS" = "Linux" ]; then
+  echo "Searching for Obsidian CLI on Linux..."
+  FOUND="$(find /opt /usr "$HOME/.local" "$HOME/Applications" -iname "*Obsidian CLI*" -type f 2>/dev/null | head -1 || true)"
+  if [ -n "$FOUND" ]; then
+    ln -sf "$FOUND" "$HOME/.local/bin/obsidian"
+    echo "Linked Obsidian CLI:"
+    echo "$HOME/.local/bin/obsidian -> $FOUND"
+    exit 0
+  fi
+
+  if command -v flatpak >/dev/null 2>&1; then
+    echo "You may have installed Obsidian via Flatpak."
+    echo "Try running Obsidian, enable the CLI in settings, then restart your terminal."
+  fi
+fi
+
+cat <<EOF
+Could not find the Obsidian CLI executable automatically.
+
+Manual steps:
+
+1. Open Obsidian.
+2. Enable:
+   Settings -> General -> Command line interface -> Enable
+3. Restart terminal.
+4. Try:
+   obsidian help
+
+If that still fails, locate the Obsidian CLI executable and symlink it:
+
+   ln -sf "/path/to/Obsidian CLI" "$HOME/.local/bin/obsidian"
+
+Make sure this is in your PATH:
+
+   export PATH="$HOME/.local/brain/bin:$HOME/.local/bin:$PATH"
+EOF
+
+exit 1

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VAULT="${SECOND_BRAIN:-$HOME/SecondBrain}"
+
+if command -v obsidian >/dev/null 2>&1; then
+  obsidian open path="$VAULT" || true
+fi
+
+case "$(uname -s)" in
+  Darwin)
+    open "$VAULT"
+    ;;
+  Linux)
+    xdg-open "$VAULT" >/dev/null 2>&1 || echo "$VAULT"
+    ;;
+  *)
+    echo "$VAULT"
+    ;;
+esac

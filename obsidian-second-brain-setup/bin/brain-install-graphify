@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v graphify >/dev/null 2>&1; then
+  echo "graphify is already installed:"
+  graphify --help | head -20 || true
+  exit 0
+fi
+
+if command -v uv >/dev/null 2>&1; then
+  echo "Installing Graphify using uv..."
+  uv tool install graphifyy
+elif command -v pipx >/dev/null 2>&1; then
+  echo "Installing Graphify using pipx..."
+  pipx install graphifyy
+else
+  echo "Neither uv nor pipx found."
+  echo
+  echo "Install one of these first:"
+  echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+  echo "or:"
+  echo "  python3 -m pip install --user pipx && python3 -m pipx ensurepath"
+  exit 1
+fi
+
+if command -v graphify >/dev/null 2>&1; then
+  echo "Graphify installed."
+  graphify --help | head -20 || true
+else
+  echo "Install completed, but graphify is not on PATH yet."
+  echo "Restart your terminal and try: graphify --help"
+fi

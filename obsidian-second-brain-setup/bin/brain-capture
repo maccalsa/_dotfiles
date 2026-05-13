@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VAULT="${SECOND_BRAIN:-$HOME/SecondBrain}"
+INBOX="$VAULT/00-Inbox"
+DATE="$(date +%Y-%m-%d)"
+TIME="$(date +%H%M%S)"
+
+mkdir -p "$INBOX"
+
+TITLE="${1:-capture-$DATE-$TIME}"
+SLUG="$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-')"
+FILE="$INBOX/$DATE-$TIME-$SLUG.md"
+
+cat > "$FILE" <<EOF
+---
+type: capture
+status: needs-review
+created: $DATE
+source: manual
+tags:
+  - inbox
+---
+
+# $TITLE
+
+EOF
+
+if [ -t 0 ]; then
+  ${EDITOR:-nano} "$FILE"
+else
+  cat >> "$FILE"
+fi
+
+echo "$FILE"

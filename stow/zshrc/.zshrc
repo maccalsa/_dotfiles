@@ -127,3 +127,7 @@ eval "$(pay-respects bash)"
 # asdf setup
 # . "$HOME/.asdf/asdf.sh"
 # . "$HOME/.asdf/completions/asdf.bash"
+
+# SecondBrain helper scripts
+export SECOND_BRAIN="/home/maccalsa/SecondBrain"
+export PATH="$HOME/.local/brain/bin:$HOME/.local/bin:$PATH"

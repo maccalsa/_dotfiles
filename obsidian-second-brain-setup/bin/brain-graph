@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VAULT="${SECOND_BRAIN:-$HOME/SecondBrain}"
+
+if ! command -v graphify >/dev/null 2>&1; then
+  echo "graphify not found."
+  echo "Run: brain-install-graphify"
+  exit 1
+fi
+
+echo "Refreshing Graphify index for $VAULT"
+graphify update "$VAULT"
+
+# Graphify writes thousands of [[_COMMUNITY_Community N|…]] wikilinks into GRAPH_REPORT.md.
+# Obsidian's graph treats each as a link target (hairball + ghost nodes). Strip to plain bullets.
+REPORT="$VAULT/graphify-out/GRAPH_REPORT.md"
+if [[ -f "$REPORT" ]]; then
+  python3 - "$REPORT" <<'PY'
+import re, pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+new, n = re.subn(
+    r"- \[\[_COMMUNITY_Community (\d+)\|Community \d+\]\]",
+    r"- **Community \1** (Graphify cluster; not a vault note—see `graph.json`)",
+    text,
+)
+if n:
+    path.write_text(new, encoding="utf-8")
+    print("Sanitized GRAPH_REPORT.md:", n, "community wikilinks → plain text (fixes Obsidian graph).")
+PY
+fi
+
+echo
+echo "Done."
+echo "Report: $VAULT/graphify-out/GRAPH_REPORT.md"
+echo "Graph:  $VAULT/graphify-out/graph.html"
+echo
+echo "Obsidian: add \`-path:graphify-out\` to the Graph filter (saved in .obsidian/graph.json) and/or exclude graphify-out under Settings → Files and links."
