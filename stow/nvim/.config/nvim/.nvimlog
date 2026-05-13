@@ -1,0 +1,2 @@
+WRN 2026-05-13T14:52:41.359 ?.2306829  server_start:193: Failed to start server: permission denied: /run/user/1000/
+WRN 2026-05-13T14:53:39.307 ?.2307144  server_start:193: Failed to start server: permission denied: /run/user/1000/

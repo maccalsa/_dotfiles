@@ -31,7 +31,7 @@ return {
         { '<leader>s_', hidden = true },
         { '<leader>t', group = '[T]oggle' },
         { '<leader>t_', hidden = true },
-        { '<leader>w', group = '[W]orkspace' },
+        { '<leader>w', group = '[W]indow / Workspace' },
         { '<leader>w_', hidden = true },
         { '<leader>h', desc = 'Git [H]unk', mode = 'v' },
       }

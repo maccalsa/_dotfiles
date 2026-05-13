@@ -8,7 +8,24 @@ Leader key: **Space**
 - **`nvim .`** – Also opens the dashboard (replaces netrw)
 - **`Space a d`** – Open Alpha dashboard from anywhere
 
-## File / Search
+## Telescope Search
+
+| Keys | Action |
+|------|--------|
+| `Space s f` | Search files |
+| `Space s g` | Search by grep |
+| `Space s h` | Search help |
+| `Space s k` | Search keymaps |
+| `Space s s` | Select Telescope picker |
+| `Space s w` | Search current word |
+| `Space s d` | Search diagnostics |
+| `Space s r` | Resume last search |
+| `Space s .` | Recent files |
+| `Space s /` | Search open files |
+| `Space s n` | Search Neovim config files |
+| `Space Space` | Find existing buffers |
+
+## File Shortcuts
 
 | Keys | Action |
 |------|--------|
@@ -41,6 +58,19 @@ Leader key: **Space**
 | Keys | Action |
 |------|--------|
 | `Ctrl-^` | Jump between last two files |
+
+## Windows / Splits
+
+| Keys | Action |
+|------|--------|
+| `Ctrl-h` | Move focus left |
+| `Ctrl-j` | Move focus down |
+| `Ctrl-k` | Move focus up |
+| `Ctrl-l` | Move focus right |
+| `Space w v` | Split window vertically |
+| `Space w -` | Split window horizontally |
+| `Space w e` | Make splits equal size |
+| `Space w x` | Close current split |
 
 ## Editing (mini.surround)
 
