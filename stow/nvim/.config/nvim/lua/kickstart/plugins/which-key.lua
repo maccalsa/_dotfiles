@@ -19,12 +19,18 @@ return {
     event = 'VimEnter', -- Sets the loading event to 'VimEnter'
     config = function() -- This is the function that runs, AFTER loading
       require('which-key').setup {
+        { '<leader>a', group = '[A]vante AI' },
+        { '<leader>a_', hidden = true },
         { '<leader>c', group = '[C]ode' },
         { '<leader>c_', hidden = true },
-        { '<leader>d', group = '[D]ocument' },
+        { '<leader>d', group = '[D]ocument / [D]atabase' },
         { '<leader>d_', hidden = true },
         { '<leader>h', group = 'Git [H]unk' },
         { '<leader>h_', hidden = true },
+        { '<leader>J', group = '[J]ava / Spring' },
+        { '<leader>J_', hidden = true },
+        { '<leader>R', group = 'HTTP [R]equests' },
+        { '<leader>R_', hidden = true },
         { '<leader>r', group = '[R]ename' },
         { '<leader>r_', hidden = true },
         { '<leader>s', group = '[S]earch' },

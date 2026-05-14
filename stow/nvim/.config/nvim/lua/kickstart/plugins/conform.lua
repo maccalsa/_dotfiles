@@ -19,12 +19,17 @@ return {
         -- have a well standardized coding style. You can add additional
         -- languages here or re-enable it for the disabled ones.
         local disable_filetypes = { c = true, cpp = true }
+        local slow_filetypes = { java = true, kotlin = true }
+        local filetype = vim.bo[bufnr].filetype
+
         return {
-          timeout_ms = 500,
-          lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype],
+          timeout_ms = slow_filetypes[filetype] and 3000 or 500,
+          lsp_fallback = not disable_filetypes[filetype],
         }
       end,
       formatters_by_ft = {
+        java = { 'google-java-format' },
+        kotlin = { 'ktlint' },
         lua = { 'stylua' },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },

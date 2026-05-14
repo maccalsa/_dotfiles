@@ -12,6 +12,10 @@ local treesitter_parsers = {
   'vim',
   'vimdoc',
   'heex',
+  'groovy',
+  'java',
+  'kotlin',
+  'properties',
 }
 
 return {

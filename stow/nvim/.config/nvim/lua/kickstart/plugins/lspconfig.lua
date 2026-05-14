@@ -155,11 +155,16 @@ return {
       --  - capabilities (table): Override fields in capabilities. Can be used to disable certain LSP features.
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
+      local util = require 'lspconfig.util'
+
       local servers = {
         elixirls = {},
         -- clangd = {},
         ts_ls = {},
         gopls = {},
+        gradle_ls = {
+          root_dir = util.root_pattern('settings.gradle', 'settings.gradle.kts', 'build.gradle', 'build.gradle.kts'),
+        },
         -- pyright = {},
         -- rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
@@ -199,11 +204,16 @@ return {
       -- for you, so that they are available from within Neovim.
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
+        'google-java-format',
+        'ktlint',
         'stylua', -- Used to format Lua code
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
       require('mason-lspconfig').setup {
+        automatic_enable = {
+          exclude = { 'kotlin_language_server' },
+        },
         handlers = {
           function(server_name)
             local server = servers[server_name] or {}
@@ -215,6 +225,19 @@ return {
           end,
         },
       }
+
+      local kotlin_lsp = vim.fn.expand '$HOME/.local/share/kotlin-lsp/262.4739.0/bin/intellij-server'
+      if vim.fn.executable(kotlin_lsp) == 1 then
+        vim.lsp.config('kotlin_lsp', {
+          cmd = { kotlin_lsp, '--stdio' },
+          filetypes = { 'kotlin' },
+          root_markers = { 'settings.gradle.kts', 'settings.gradle', 'build.gradle.kts', 'build.gradle', 'pom.xml', '.git' },
+          single_file_support = false,
+        })
+        vim.lsp.enable 'kotlin_lsp'
+      else
+        vim.notify('Kotlin LSP not found at ' .. kotlin_lsp, vim.log.levels.WARN)
+      end
     end,
   },
 }
