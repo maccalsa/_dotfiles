@@ -53,8 +53,7 @@ return {
     config = function()
       require('java').setup {
         jdk = {
-          auto_install = true,
-          version = '21',
+          auto_install = false,
         },
         spring_boot_tools = {
           enable = true,

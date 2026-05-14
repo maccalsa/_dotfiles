@@ -5,8 +5,10 @@ Leader key: **Space**
 ## Startup
 
 - **`nvim`** – Opens the dashboard (you're in your shell's current directory; use `:pwd` to check)
-- **`nvim .`** – Also opens the dashboard (replaces netrw)
+- **`nvim .`** – Opens the dashboard with Neo-tree on the left instead of netrw
 - **`Space a d`** – Open Alpha dashboard from anywhere
+
+Dashboard shortcuts include `n` for Neo-tree, `a` for Avante AI, `R` for HTTP environments, `D` for DBee, and `T` for theme selection.
 
 ## Telescope Search
 
@@ -52,6 +54,26 @@ Leader key: **Space**
 | `Space j 1`–`4` | Jump to slot 1–4 |
 | `Space j n` | Next Harpoon file |
 | `Space j p` | Previous Harpoon file |
+
+## Neo-tree
+
+| Keys | Action |
+|------|--------|
+| `\` | Open/focus Neo-tree and reveal the current file if it is under `:pwd` |
+| `Space n t` | Toggle Neo-tree open/closed |
+| `Space n f` | Toggle automatic follow-current-file mode |
+
+When follow mode is enabled, Neo-tree reveals normal files under the current working directory and silently ignores unnamed buffers or files outside the tree.
+
+## Themes
+
+Tokyo Night remains the default. Catppuccin is installed as an alternative.
+
+| Command | Action |
+|---------|--------|
+| `:colorscheme catppuccin-mocha` | Switch to Catppuccin Mocha |
+| `:colorscheme tokyonight-night` | Switch back to Tokyo Night |
+| `:Telescope colorscheme` | Browse available themes |
 
 ## Built-in
 
@@ -161,9 +183,22 @@ The configured binary path is:
 $HOME/.local/share/kotlin-lsp/262.4739.0/bin/intellij-server
 ```
 
+## Kotlin / Spring / Gradle
+
+Kotlin Spring support uses `kotlin_lsp` for code intelligence and Gradle tasks through `toggleterm` for runtime workflows.
+
+| Keys | Action |
+|------|--------|
+| `Space K r` | Run Spring Boot with `./gradlew bootRun` |
+| `Space K t` | Run tests with `./gradlew test` |
+| `Space K b` | Build with `./gradlew build` |
+| `Space K c` | Clean with `./gradlew clean` |
+| `Space K i` | Show LSP clients attached to the current buffer |
+| `Space K x` | Prompt for arbitrary Gradle task(s) |
+
 ## Java / Spring / Gradle
 
-Full Java/Spring support uses `nvim-java`, which requires Neovim 0.11.5+.
+Java/Spring support uses `nvim-java`, which requires Neovim 0.11.5+. These mappings are Java-buffer tooling and are separate from the Kotlin/Spring Gradle mappings above.
 Install or refresh the source-built Neovim with:
 
 ```sh

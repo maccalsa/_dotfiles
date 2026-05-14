@@ -145,6 +145,80 @@ return {
           vim.notify('Not in a terminal buffer', vim.log.levels.WARN)
         end
       end, { desc = 'Kill current terminal' })
+
+      local function gradle_root()
+        local current_file = vim.api.nvim_buf_get_name(0)
+        local start_path = current_file ~= '' and vim.fs.dirname(current_file) or vim.uv.cwd()
+        local marker = vim.fs.find({ 'gradlew', 'settings.gradle.kts', 'settings.gradle', 'build.gradle.kts', 'build.gradle' }, {
+          path = start_path,
+          upward = true,
+        })[1]
+
+        return marker and vim.fs.dirname(marker) or nil
+      end
+
+      local function parse_gradle_tasks(input)
+        local tasks = {}
+        for task in input:gmatch '%S+' do
+          if not task:match '^[%w_:%.-]+$' then
+            vim.notify('Gradle task contains unsupported characters: ' .. task, vim.log.levels.ERROR)
+            return nil
+          end
+          table.insert(tasks, task)
+        end
+
+        return #tasks > 0 and tasks or nil
+      end
+
+      local function run_gradle(input)
+        local root = gradle_root()
+        if not root then
+          vim.notify('No Gradle project found from the current buffer.', vim.log.levels.WARN)
+          return
+        end
+
+        local tasks = parse_gradle_tasks(input)
+        if not tasks then
+          return
+        end
+
+        local wrapper = root .. '/gradlew'
+        local executable = vim.fn.executable(wrapper) == 1 and './gradlew' or 'gradle'
+        require('toggleterm.terminal').Terminal:new({
+          cmd = executable .. ' ' .. table.concat(tasks, ' '),
+          dir = root,
+          direction = 'float',
+          close_on_exit = false,
+          hidden = true,
+        }):toggle()
+      end
+
+      local function show_lsp_clients()
+        local clients = vim.lsp.get_clients { bufnr = 0 }
+        if #clients == 0 then
+          vim.notify('No LSP clients attached to this buffer.', vim.log.levels.WARN)
+          return
+        end
+
+        local names = vim.tbl_map(function(client)
+          return client.name
+        end, clients)
+        vim.notify('Attached LSP clients: ' .. table.concat(names, ', '), vim.log.levels.INFO)
+      end
+
+      vim.keymap.set('n', '<leader>Kr', function() run_gradle 'bootRun' end, { desc = 'Kotlin/Spring: Boot run' })
+      vim.keymap.set('n', '<leader>Kt', function() run_gradle 'test' end, { desc = 'Kotlin/Spring: Test' })
+      vim.keymap.set('n', '<leader>Kb', function() run_gradle 'build' end, { desc = 'Kotlin/Spring: Build' })
+      vim.keymap.set('n', '<leader>Kc', function() run_gradle 'clean' end, { desc = 'Kotlin/Spring: Clean' })
+      vim.keymap.set('n', '<leader>Ki', show_lsp_clients, { desc = 'Kotlin/Spring: LSP clients' })
+      vim.keymap.set('n', '<leader>Kx', function()
+        vim.ui.input({ prompt = 'Gradle task(s): ' }, function(input)
+          if input and input ~= '' then
+            run_gradle(input)
+          end
+        end)
+      end, { desc = 'Kotlin/Spring: Run Gradle task' })
+
       -- Exit terminal mode: Esc or Ctrl-\ Ctrl-n (built-in). Add toggleterm-specific mapping.
       vim.api.nvim_create_autocmd('TermOpen', {
         pattern = { 'term://*#toggleterm#*', 'term://*::toggleterm::*' },

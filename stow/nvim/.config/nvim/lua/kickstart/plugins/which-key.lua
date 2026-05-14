@@ -29,6 +29,8 @@ return {
         { '<leader>h_', hidden = true },
         { '<leader>J', group = '[J]ava / Spring' },
         { '<leader>J_', hidden = true },
+        { '<leader>K', group = '[K]otlin / Spring' },
+        { '<leader>K_', hidden = true },
         { '<leader>R', group = 'HTTP [R]equests' },
         { '<leader>R_', hidden = true },
         { '<leader>r', group = '[R]ename' },

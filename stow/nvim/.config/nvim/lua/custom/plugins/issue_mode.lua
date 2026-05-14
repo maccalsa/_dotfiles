@@ -101,6 +101,11 @@ return {
         dashboard.button("g", "󰈬  Live grep repo", "<cmd>lua require('telescope.builtin').live_grep()<CR>"),
         dashboard.button("b", "󰓩  Buffers", "<cmd>lua require('telescope.builtin').buffers()<CR>"),
         dashboard.button("s", "  Git status", "<cmd>lua require('telescope.builtin').git_status()<CR>"),
+        dashboard.button("n", "󰙅  Neo-tree", "<cmd>Neotree toggle left<CR>"),
+        dashboard.button("a", "󰚩  AI chat", "<cmd>AvanteChat<CR>"),
+        dashboard.button("R", "󱂛  HTTP environment", "<cmd>HttpEnv<CR>"),
+        dashboard.button("D", "󰆼  Database", "<cmd>Dbee toggle<CR>"),
+        dashboard.button("T", "󰏘  Themes", "<cmd>Telescope colorscheme<CR>"),
         dashboard.button("h", "󱡀  Harpoon menu",
           "<cmd>lua require('harpoon').ui:toggle_quick_menu(require('harpoon'):list())<CR>"),
         dashboard.button("q", "󰅚  Quit", ":qa<CR>"),
@@ -108,20 +113,31 @@ return {
 
       dashboard.section.footer.val = {
         "",
-        "ad dashboard | m modified | M grep modified | h harpoon | Ctrl-^ last file",
+        "ad dashboard | n tree | a AI | R HTTP | D db | T themes | h harpoon | Ctrl-^ last file",
       }
 
       alpha.setup(dashboard.opts)
 
       vim.keymap.set("n", "<leader>ad", "<cmd>Alpha<CR>", { desc = "Alpha dashboard" })
 
-      -- Show dashboard when using `nvim .` (Alpha normally only shows for `nvim` with no args)
+      -- Show dashboard with Neo-tree when opening a directory, e.g. `nvim .`.
       vim.api.nvim_create_autocmd("VimEnter", {
         callback = function()
-          if vim.fn.argc() == 1 and vim.v.argv[2] == "." then
+          if vim.fn.argc() ~= 1 then
+            return
+          end
+
+          local arg = vim.fn.argv(0)
+          if vim.fn.isdirectory(arg) == 1 then
             vim.schedule(function()
-              pcall(vim.cmd, "bwipeout")
+              local root = vim.fs.normalize(vim.fn.fnamemodify(arg, ":p"))
+              pcall(vim.cmd.cd, vim.fn.fnameescape(root))
+              if vim.bo.filetype == "netrw" or vim.fn.isdirectory(vim.api.nvim_buf_get_name(0)) == 1 then
+                pcall(vim.cmd, "bwipeout")
+              end
               pcall(vim.cmd, "Alpha")
+              pcall(vim.cmd, "Neotree show left dir=" .. vim.fn.fnameescape(root))
+              pcall(vim.cmd, "wincmd l")
             end)
           end
         end,
@@ -144,6 +160,7 @@ return {
         { "<leader>f",  group = "File" },
         { "<leader>g",  group = "Git / issue" },
         { "<leader>j",  group = "Harpoon (jump)" },
+        { "<leader>n",  group = "Neo-tree" },
         { "<leader>c",  group = "Cheatsheet" },
         { "<leader>ad", desc = "Alpha dashboard" },
       })
