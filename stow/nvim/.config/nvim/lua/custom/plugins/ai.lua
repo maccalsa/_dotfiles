@@ -4,7 +4,7 @@ return {
     event = 'VeryLazy',
     version = false,
     build = vim.fn.has 'win32' ~= 0 and 'powershell -ExecutionPolicy Bypass -File Build.ps1 -BuildFromSource false'
-      or 'bash -c \'GH_CONFIG_DIR="$(mktemp -d)" make\'',
+      or 'make',
     cmd = {
       'AvanteAsk',
       'AvanteBuild',

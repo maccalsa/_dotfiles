@@ -60,7 +60,7 @@ return {
           -- Jump to the definition of the word under your cursor.
           --  This is where a variable was first declared, or where a function is defined, etc.
           --  To jump back, press <C-t>.
-          map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
+          map('gd', vim.lsp.buf.definition, '[G]oto [D]efinition')
 
           -- Find references for the word under your cursor.
           map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
@@ -72,7 +72,7 @@ return {
           -- Jump to the type of the word under your cursor.
           --  Useful when you're not sure what type a variable is and you want to see
           --  the definition of its *type*, not where it was *defined*.
-          map('<leader>D', require('telescope.builtin').lsp_type_definitions, 'Type [D]efinition')
+          map('<leader>D', vim.lsp.buf.type_definition, 'Type [D]efinition')
 
           -- Fuzzy find all the symbols in your current document.
           --  Symbols are things like variables, functions, types, etc.
@@ -228,8 +228,9 @@ return {
 
       local kotlin_lsp = vim.fn.expand '$HOME/.local/share/kotlin-lsp/262.4739.0/bin/intellij-server'
       if vim.fn.executable(kotlin_lsp) == 1 then
+        local kotlin_lsp_system_path = vim.fn.stdpath 'cache' .. '/kotlin-lsp'
         vim.lsp.config('kotlin_lsp', {
-          cmd = { kotlin_lsp, '--stdio' },
+          cmd = { kotlin_lsp, '--stdio', '--system-path', kotlin_lsp_system_path },
           filetypes = { 'kotlin' },
           root_markers = { 'settings.gradle.kts', 'settings.gradle', 'build.gradle.kts', 'build.gradle', 'pom.xml', '.git' },
           single_file_support = false,

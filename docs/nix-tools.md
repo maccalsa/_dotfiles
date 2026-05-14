@@ -19,7 +19,7 @@ The curated list includes:
 - File and text tools: `bat`, `eza`, `fd`, `ripgrep`, `sd`, `jq`, `yq-go`
 - Git and diffs: `gh`, `delta`, `difftastic`, `lazygit`
 - Containers and Kubernetes: `lazydocker`, `kind`, `kubectl`, `kubernetes-helm`, `ctlptl`
-- Developer workflow: `just`, `watchexec`, `hyperfine`, `tokei`, `gum`, `glow`, `tealdeer`
+- Developer workflow: `just`, `watchexec`, `hyperfine`, `tokei`, `gum`, `glow`, `tealdeer`, `tree-sitter`
 - System inspection: `bottom`, `dust`, `procs`, `lsof`, `viddy`, `mprocs`
 - HTTP and runtimes: `httpie`, `xh`, `bun`
 - Other utilities: `jsonnet`, `pay-respects`, `zip`
@@ -40,6 +40,8 @@ After running the Nix installer, open a new shell and check:
 ```bash
 nix --version
 nix profile list
+command -v gh
+gh --version
 pay-respects --help
 direnv version
 just --version
@@ -47,3 +49,7 @@ just --version
 
 If completions or PATH look wrong, check whether the Nix profile is loaded in the
 current shell before reinstalling tools.
+
+`gh` is intentionally managed here rather than through Ubuntu apt. If
+`command -v gh` prints `/usr/bin/gh`, the shell is still seeing Ubuntu's older
+GitHub CLI before the Nix profile.

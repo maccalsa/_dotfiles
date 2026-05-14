@@ -164,6 +164,11 @@ $HOME/.local/share/kotlin-lsp/262.4739.0/bin/intellij-server
 ## Java / Spring / Gradle
 
 Full Java/Spring support uses `nvim-java`, which requires Neovim 0.11.5+.
+Install or refresh the source-built Neovim with:
+
+```sh
+~/_dotfiles/installers/install_neovim.sh reinstall --latest
+```
 
 | Keys | Action |
 |------|--------|

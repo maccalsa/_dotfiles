@@ -5,6 +5,7 @@ set -euo pipefail
 DEFAULT_NIXPKGS_REF="github:NixOS/nixpkgs/nixos-unstable"
 read -r -p "Enter the nixpkgs flake ref to use (default: $DEFAULT_NIXPKGS_REF): " NIXPKGS_REF
 NIXPKGS_REF=${NIXPKGS_REF:-$DEFAULT_NIXPKGS_REF}
+NIX_FLAGS=(--extra-experimental-features 'nix-command flakes')
 
 # ─────────────────────────────────────────────
 # Install Nix (multi-user / daemon mode)
@@ -78,6 +79,7 @@ packages=(
   "$NIXPKGS_REF#sd"
   "$NIXPKGS_REF#starship"
   "$NIXPKGS_REF#tealdeer"
+  "$NIXPKGS_REF#tree-sitter"
   "$NIXPKGS_REF#tokei"
   "$NIXPKGS_REF#viddy"
   "$NIXPKGS_REF#watchexec"
@@ -87,9 +89,36 @@ packages=(
   "$NIXPKGS_REF#zoxide"
 )
 
-nix --extra-experimental-features 'nix-command flakes' profile install "${packages[@]}"
+if nix "${NIX_FLAGS[@]}" profile list >/dev/null 2>&1; then
+  echo "⬆️  Upgrading existing Nix profile packages..."
+  nix "${NIX_FLAGS[@]}" profile upgrade --all
+fi
+
+echo "➕ Ensuring configured Nix tools are installed..."
+for package in "${packages[@]}"; do
+  if ! nix "${NIX_FLAGS[@]}" profile install "$package" --priority 4; then
+    echo "ℹ️  Could not install $package. It may already be present in the profile; continuing."
+  fi
+done
 
 echo "✅ Done installing Nix tools."
+
+echo
+echo "GitHub CLI check:"
+if command -v gh >/dev/null 2>&1; then
+  command -v gh
+  gh --version | sed -n '1,2p'
+
+  case "$(command -v gh)" in
+    /nix/* | "$HOME"/.nix-profile/*)
+      ;;
+    *)
+      echo "⚠️  PATH is resolving gh outside the Nix profile. Start a new shell or move the Nix profile earlier in PATH."
+      ;;
+  esac
+else
+  echo "⚠️  gh was not found on PATH after Nix install. Start a new shell and try: command -v gh"
+fi
 
 echo
 echo "🎉 Nix setup complete!"

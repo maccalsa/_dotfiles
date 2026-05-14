@@ -22,24 +22,37 @@ return {
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     lazy = false,
-    branch = 'master',
-    build = ':TSUpdateSync ' .. table.concat(treesitter_parsers, ' '),
-    opts = {
-      ignore_install = { 'jsonc' },
-      auto_install = false,
-      highlight = {
-        enable = true,
-        -- Some languages depend on vim's regex highlighting system (such as Ruby) for indent rules.
-        --  If you are experiencing weird indenting issues, add the language to
-        --  the list of additional_vim_regex_highlighting and disabled languages for indent.
-        additional_vim_regex_highlighting = { 'ruby' },
-      },
-      indent = { enable = true, disable = { 'ruby' } },
-    },
-    config = function(_, opts)
-      require('nvim-treesitter.install').prefer_git = true
+    branch = 'main',
+    build = function()
+      require('nvim-treesitter').install(treesitter_parsers, { summary = true }):wait(300000)
+    end,
+    config = function()
       vim.treesitter.language.register('json', 'jsonc')
-      require('nvim-treesitter.configs').setup(opts)
+
+      local treesitter = require 'nvim-treesitter'
+      treesitter.setup()
+
+      if not treesitter.get_installed then
+        return
+      end
+
+      local installed = treesitter.get_installed 'parsers'
+      local missing = vim.tbl_filter(function(parser)
+        return not vim.list_contains(installed, parser)
+      end, treesitter_parsers)
+
+      if #missing > 0 then
+        treesitter.install(missing, { summary = true }):wait(300000)
+      end
+
+      vim.api.nvim_create_autocmd('FileType', {
+        group = vim.api.nvim_create_augroup('kickstart-treesitter', { clear = true }),
+        callback = function()
+          if pcall(vim.treesitter.start) then
+            vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+          end
+        end,
+      })
     end,
   },
 }

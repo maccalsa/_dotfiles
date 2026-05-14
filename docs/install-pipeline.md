@@ -41,6 +41,10 @@ This repo targets Ubuntu/Linux. Run the scripts from the repo root.
 These are present but only run during `install_software.sh` when you confirm the
 prompt, or run the script manually:
 
+- `installers/install_neovim.sh` — builds Neovim from source. By default it
+  installs the latest stable release. Use `--ref v0.11.5` to pin a version,
+  `reinstall --latest` to replace the current source install, or `uninstall` to
+  remove the `/usr/local` source-built install.
 - `installers/install_desktop_apps.sh` — Remmina, Cursor, Cursor CLI, snap,
   Telegram; uses `install_cursor.sh` internally for the IDE apt package.
 - `installers/install_cursor.sh` — Cursor IDE only.
