@@ -420,7 +420,7 @@ do_create() {
     --video          virtio
     --channel        spicevmc
     --sound          ich9
-    --audio          id=1,type=spice
+    --audio          id=1,type=pulseaudio
     --boot           uefi
     --controller     "type=usb,model=qemu-xhci"
     --input          "type=tablet,bus=usb"
