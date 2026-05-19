@@ -754,6 +754,10 @@ do_resize() {
   fi
   disk="/dev/$pkname"
   partnum="$(lsblk -no PARTN "$partition" | head -n1 || true)"
+  # Fallback: extract trailing digits from device name (e.g. /dev/vda3 → 3)
+  if [[ -z "$partnum" ]]; then
+    partnum="${partition##*[!0-9]}"
+  fi
   if [[ -z "$partnum" ]]; then
     err "Could not detect partition number for $partition"
     exit 1
