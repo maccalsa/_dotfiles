@@ -120,6 +120,7 @@ Subcommands:
   create       Create and start a new VM                          (host)
   delete       Destroy and undefine a VM                          (host)
   list         List all VMs                                       (host)
+  connect      Open VM console via virt-viewer (best for audio)   (host)
   host-setup   Install KVM/libvirt/SPICE stack on this machine    (host)
   guest-setup  Configure audio, SPICE agent, and optional RDP     (guest)
   resize       Detect and grow root partition after disk expand   (guest)
@@ -191,6 +192,7 @@ interactive_menu() {
     "create VM"
     "delete VM"
     "list VMs"
+    "connect to VM (virt-viewer)"
     "host-setup (install KVM stack)"
     "guest-setup (run inside guest)"
     "resize disk (run inside guest)"
@@ -216,6 +218,11 @@ interactive_menu() {
         ;;
       "list VMs")
         OPERATION="list"
+        return
+        ;;
+      "connect to VM (virt-viewer)")
+        read -rp "VM name to connect to: " VM_NAME
+        OPERATION="connect"
         return
         ;;
       "host-setup (install KVM stack)")
@@ -254,7 +261,7 @@ parse_args() {
   fi
 
   case "$1" in
-    create|delete|list|host-setup|guest-setup|resize)
+    create|delete|list|connect|host-setup|guest-setup|resize)
       OPERATION="$1"
       shift
       ;;
@@ -420,7 +427,7 @@ do_create() {
     --video          virtio
     --channel        spicevmc
     --sound          ich9
-    --audio          id=1,type=pulseaudio
+    --audio          id=1,type=spice
     --boot           uefi
     --controller     "type=usb,model=qemu-xhci"
     --input          "type=tablet,bus=usb"
@@ -520,6 +527,25 @@ do_list() {
   require_host_deps
   printf 'VMs on %s:\n\n' "$CONNECT_URI"
   virsh --connect "$CONNECT_URI" list --all
+}
+
+# ---------------------------------------------------------------------------
+# connect — open VM console via virt-viewer (better audio than virt-manager)
+# ---------------------------------------------------------------------------
+
+do_connect() {
+  require_host_deps
+  if [[ -z "$VM_NAME" ]]; then
+    err "--name is required for connect"
+    exit 1
+  fi
+  if ! vm_exists; then
+    err "VM does not exist: $VM_NAME"
+    exit 1
+  fi
+  exists virt-viewer || { err "virt-viewer not found. Install with: sudo apt install virt-viewer"; exit 1; }
+  printf 'Connecting to %s via virt-viewer...\n' "$VM_NAME"
+  virt-viewer --connect "$CONNECT_URI" --attach "$VM_NAME" &
 }
 
 # ---------------------------------------------------------------------------
@@ -773,6 +799,7 @@ main() {
     create)      do_create ;;
     delete)      do_delete ;;
     list)        do_list ;;
+    connect)     do_connect ;;
     host-setup)  do_host_setup ;;
     guest-setup) do_guest_setup ;;
     resize)      do_resize ;;
