@@ -718,7 +718,7 @@ do_resize() {
 
   printf 'Detected root:\n  Source: %s\n  Type:   %s\n\n' "$root_source" "$root_fstype"
 
-  local partition
+  local partition luks_device luks_partition
   if [[ "$root_source" == /dev/mapper/* ]]; then
     echo "LVM/encrypted layout detected."
     local pv_device
@@ -727,7 +727,21 @@ do_resize() {
       err "Could not detect the LVM physical volume."
       exit 1
     fi
-    partition="$pv_device"
+
+    # Check if the PV is a LUKS dm-crypt device
+    if [[ "$pv_device" == /dev/mapper/* ]]; then
+      luks_device="$pv_device"
+      local luks_name="${luks_device#/dev/mapper/}"
+      luks_partition="$(sudo cryptsetup status "$luks_name" 2>/dev/null | awk '/device:/{print $2}')"
+      if [[ -z "$luks_partition" ]]; then
+        err "Could not detect underlying partition for LUKS device $luks_device"
+        exit 1
+      fi
+      echo "LUKS device: $luks_device → backed by: $luks_partition"
+      partition="$luks_partition"
+    else
+      partition="$pv_device"
+    fi
   else
     partition="$root_source"
   fi
@@ -749,12 +763,17 @@ do_resize() {
   printf '  Disk:      %s\n'   "$disk"
   printf '  Partition: %s\n'   "$partition"
   printf '  Part num:  %s\n'   "$partnum"
+  [[ -n "${luks_device:-}" ]] && printf '  LUKS:      %s\n' "$luks_device"
   printf '  Root FS:   %s\n\n' "$root_fstype"
 
   printf 'Commands to be run:\n'
   printf '  sudo growpart %s %s\n' "$disk" "$partnum"
-  if sudo pvs "$partition" >/dev/null 2>&1; then
-    printf '  sudo pvresize %s\n' "$partition"
+  if [[ -n "${luks_device:-}" ]]; then
+    printf '  sudo cryptsetup resize %s\n' "$luks_device"
+  fi
+  local lvm_pv="${luks_device:-$partition}"
+  if sudo pvs "$lvm_pv" >/dev/null 2>&1; then
+    printf '  sudo pvresize %s\n' "$lvm_pv"
     printf '  sudo lvextend -l +100%%FREE %s\n' "$root_source"
   fi
   case "$root_fstype" in
@@ -772,8 +791,14 @@ do_resize() {
   sudo apt install -y cloud-guest-utils
   sudo growpart "$disk" "$partnum"
 
-  if sudo pvs "$partition" >/dev/null 2>&1; then
-    sudo pvresize "$partition"
+  # Resize LUKS container if present (must happen before LVM resize)
+  if [[ -n "${luks_device:-}" ]]; then
+    sudo cryptsetup resize "$luks_device"
+  fi
+
+  local lvm_pv="${luks_device:-$partition}"
+  if sudo pvs "$lvm_pv" >/dev/null 2>&1; then
+    sudo pvresize "$lvm_pv"
     sudo lvextend -l +100%FREE "$root_source"
   fi
 

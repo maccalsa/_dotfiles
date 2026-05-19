@@ -122,6 +122,29 @@ virsh --connect qemu:///system qemu-monitor-command <vm> --hmp "info spice"
 
 ---
 
+## Resizing a VM Disk
+
+### Step 1 — on the host (VM must be shut off)
+```bash
+# Check current disk size
+qemu-img info ~/.local/share/libvirt/images/<vm>.qcow2 | grep 'virtual size'
+
+# Expand the image (adds to existing size)
+qemu-img resize ~/.local/share/libvirt/images/<vm>.qcow2 +20G
+
+# Start the VM
+virsh --connect qemu:///system start <vm>
+```
+
+### Step 2 — inside the guest
+```bash
+x_vm resize
+```
+Handles plain partitions and LVM/encrypted layouts automatically.
+Grows: partition → LVM PV/LV (if present) → filesystem (ext4 or xfs).
+
+---
+
 ## x_vm Script Reference
 
 ```bash
