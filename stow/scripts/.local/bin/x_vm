@@ -7,7 +7,7 @@ set -euo pipefail
 # Defaults
 # ---------------------------------------------------------------------------
 
-DEFAULT_CONNECT="qemu:///session"
+DEFAULT_CONNECT="qemu:///system"
 DEFAULT_OS="ubuntu"
 DEFAULT_PROFILE="dev"
 
@@ -20,7 +20,8 @@ PROFILE_TEST_VCPUS=4;      PROFILE_TEST_RAM=8192;       PROFILE_TEST_DISK=80
 OS_UBUNTU_ISO_GLOB="$HOME/Downloads/ubuntu-24.04*desktop-amd64.iso"
 OS_UBUNTU_VARIANT="ubuntu24.04"
 OS_UBUNTU26_ISO_GLOB="$HOME/Downloads/ubuntu-26.04*desktop-amd64.iso"
-OS_UBUNTU26_VARIANT="ubuntu26.04"
+# ubuntu26.04 not yet in osinfo-db; use closest available variant as fallback
+OS_UBUNTU26_VARIANT="ubuntu25.04"
 OS_POP_ISO_GLOB="$HOME/Downloads/pop-os_24.04_amd64_generic_24.iso"
 OS_POP_VARIANT="ubuntu24.04"
 
@@ -137,7 +138,7 @@ create options:
   --vcpus N                     Virtual CPUs (overrides profile)
   --disk-size GB                Disk in GiB (overrides profile)
   --disk PATH                   Disk image path (default: ~/.local/share/libvirt/images/NAME.qcow2)
-  --connect URI                 Libvirt URI (default: qemu:///session)
+  --connect URI                 Libvirt URI (default: qemu:///system)
   --network SPEC                virt-install network spec (default: network=default,model=virtio)
   --os-variant VARIANT          Override os-variant (default: ubuntu24.04)
   --recreate                    Destroy existing VM and re-create
@@ -147,12 +148,12 @@ create options:
 
 delete options:
   --name NAME                   VM name (required)
-  --connect URI                 Libvirt URI (default: qemu:///session)
+  --connect URI                 Libvirt URI (default: qemu:///system)
   --keep-storage                Undefine VM but do not delete its disk
   -y, --yes                     Skip confirmation prompt
 
 list options:
-  --connect URI                 Libvirt URI (default: qemu:///session)
+  --connect URI                 Libvirt URI (default: qemu:///system)
 
 guest-setup options:
   --rdp                         Also install and enable xrdp for remote desktop
@@ -419,7 +420,7 @@ do_create() {
     --video          virtio
     --channel        spicevmc
     --sound          ich9
-    --audio          spice
+    --audio          id=1,type=spice
     --boot           uefi
     --controller     "type=usb,model=qemu-xhci"
     --input          "type=tablet,bus=usb"
