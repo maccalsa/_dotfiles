@@ -1,0 +1,790 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# x_vm - KVM/libvirt VM manager: create, delete, list, host-setup, guest-setup, resize
+
+# ---------------------------------------------------------------------------
+# Defaults
+# ---------------------------------------------------------------------------
+
+DEFAULT_CONNECT="qemu:///session"
+DEFAULT_OS="ubuntu"
+DEFAULT_PROFILE="dev"
+
+# Profile presets: <vcpus> <ram_mb> <disk_gb>
+PROFILE_TEMPLATE_VCPUS=2;  PROFILE_TEMPLATE_RAM=4096;  PROFILE_TEMPLATE_DISK=40
+PROFILE_DEV_VCPUS=4;       PROFILE_DEV_RAM=8192;       PROFILE_DEV_DISK=80
+PROFILE_TEST_VCPUS=4;      PROFILE_TEST_RAM=8192;       PROFILE_TEST_DISK=80
+
+# OS defaults: iso glob and os-variant
+OS_UBUNTU_ISO_GLOB="$HOME/Downloads/ubuntu-24.04*desktop-amd64.iso"
+OS_UBUNTU_VARIANT="ubuntu24.04"
+OS_UBUNTU26_ISO_GLOB="$HOME/Downloads/ubuntu-26.04*desktop-amd64.iso"
+OS_UBUNTU26_VARIANT="ubuntu26.04"
+OS_POP_ISO_GLOB="$HOME/Downloads/pop-os_24.04_amd64_generic_24.iso"
+OS_POP_VARIANT="ubuntu24.04"
+
+# ---------------------------------------------------------------------------
+# Runtime state (overridden by flags)
+# ---------------------------------------------------------------------------
+
+OPERATION=""
+VM_NAME=""
+OS_TYPE="$DEFAULT_OS"
+PROFILE="$DEFAULT_PROFILE"
+ISO_PATH=""
+RAM_MB=""
+VCPUS=""
+DISK_GB=""
+DISK_PATH=""
+CONNECT_URI="$DEFAULT_CONNECT"
+NETWORK=""
+OS_VARIANT=""
+RECREATE=false
+KEEP_STORAGE=false
+ASSUME_YES=false
+DRY_RUN=false
+NO_AUTOCONSOLE=true
+SETUP_RDP=false
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+err() { printf 'Error: %s\n' "$*" >&2; }
+
+exists() { command -v "$1" >/dev/null 2>&1; }
+
+expand_path() {
+  local p="$1"
+  case "$p" in
+    "~")   printf '%s\n' "$HOME" ;;
+    "~/"*) printf '%s/%s\n' "$HOME" "${p#~/}" ;;
+    *)     printf '%s\n' "$p" ;;
+  esac
+}
+
+# Resolve a glob to its first match (or empty string).
+glob_first() {
+  local pattern="$1"
+  local match
+  match="$(compgen -G "$pattern" 2>/dev/null | head -n1 || true)"
+  printf '%s\n' "$match"
+}
+
+validate_number() {
+  local label="$1" value="$2"
+  if [[ ! "$value" =~ ^[0-9]+$ ]] || [[ "$value" -le 0 ]]; then
+    err "$label must be a positive integer: $value"
+    exit 1
+  fi
+}
+
+require_host_deps() {
+  local missing=()
+  exists virt-install || missing+=("virt-install")
+  exists virsh        || missing+=("virsh")
+  if ((${#missing[@]} > 0)); then
+    err "Missing required command(s): ${missing[*]}"
+    printf >&2 'Install with:\n  sudo apt install virt-manager virtinst qemu-kvm libvirt-daemon-system libvirt-clients\n'
+    exit 1
+  fi
+}
+
+vm_exists() {
+  virsh --connect "$CONNECT_URI" dominfo "$VM_NAME" >/dev/null 2>&1
+}
+
+confirm() {
+  local prompt="$1"
+  if $ASSUME_YES; then return; fi
+  local answer
+  read -r -p "$prompt Type 'yes' to continue: " answer
+  if [[ "$answer" != "yes" ]]; then
+    echo "Cancelled."
+    exit 0
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Usage
+# ---------------------------------------------------------------------------
+
+usage() {
+  cat <<'EOF'
+Usage:
+  x_vm [SUBCOMMAND] [OPTIONS]
+
+Subcommands:
+  create       Create and start a new VM                          (host)
+  delete       Destroy and undefine a VM                          (host)
+  list         List all VMs                                       (host)
+  host-setup   Install KVM/libvirt/SPICE stack on this machine    (host)
+  guest-setup  Configure audio, SPICE agent, and optional RDP     (guest)
+  resize       Detect and grow root partition after disk expand   (guest)
+
+  (no subcommand) — interactive menu
+
+create options:
+  --profile template|dev|test   Resource preset (default: dev)
+                                  template  2 vCPU  4 GB   40 GB (snapshot base)
+                                  dev       4 vCPU  8 GB   80 GB (development)
+                                  test      4 vCPU  8 GB   80 GB (throwaway testing)
+  --os ubuntu|ubuntu26|pop      OS defaults for ISO and variant (default: ubuntu)
+  --name NAME                   VM name (default: <os>-<profile>)
+  --iso PATH                    ISO path (default: auto-detected from ~/Downloads)
+  --ram MB                      Memory in MiB (overrides profile)
+  --vcpus N                     Virtual CPUs (overrides profile)
+  --disk-size GB                Disk in GiB (overrides profile)
+  --disk PATH                   Disk image path (default: ~/.local/share/libvirt/images/NAME.qcow2)
+  --connect URI                 Libvirt URI (default: qemu:///session)
+  --network SPEC                virt-install network spec (default: network=default,model=virtio)
+  --os-variant VARIANT          Override os-variant (default: ubuntu24.04)
+  --recreate                    Destroy existing VM and re-create
+  -y, --yes                     Skip confirmation prompts
+  --dry-run                     Print virt-install command, do not run
+  --console                     Attach console after starting
+
+delete options:
+  --name NAME                   VM name (required)
+  --connect URI                 Libvirt URI (default: qemu:///session)
+  --keep-storage                Undefine VM but do not delete its disk
+  -y, --yes                     Skip confirmation prompt
+
+list options:
+  --connect URI                 Libvirt URI (default: qemu:///session)
+
+guest-setup options:
+  --rdp                         Also install and enable xrdp for remote desktop
+
+Global:
+  -h, --help                    Show this help
+
+Examples:
+  x_vm
+  x_vm create --profile dev --os ubuntu
+  x_vm create --profile dev --os ubuntu26
+  x_vm create --profile template --os pop --name pop-base
+  x_vm create --name my-vm --ram 16384 --vcpus 8 --disk-size 120
+  x_vm delete --name ubuntu-dev --yes
+  x_vm list
+  x_vm host-setup
+  x_vm guest-setup --rdp
+  x_vm resize
+
+Requirements (host):
+  virt-install, virsh, qemu/KVM, working libvirt session.
+  Run 'x_vm host-setup' to install everything.
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Interactive menu (no-subcommand fallback)
+# ---------------------------------------------------------------------------
+
+interactive_menu() {
+  echo "x_vm — KVM/libvirt VM manager"
+  echo
+  PS3="Choose action: "
+  local options=(
+    "create VM"
+    "delete VM"
+    "list VMs"
+    "host-setup (install KVM stack)"
+    "guest-setup (run inside guest)"
+    "resize disk (run inside guest)"
+    "quit"
+  )
+  select opt in "${options[@]}"; do
+    case "$opt" in
+      "create VM")
+        local name os profile
+        read -rp "VM name (leave blank for auto): " name
+        read -rp "OS [ubuntu/pop] (default: ubuntu): " os
+        read -rp "Profile [template/dev/test] (default: dev): " profile
+        [[ -n "$name"    ]] && VM_NAME="$name"
+        [[ -n "$os"      ]] && OS_TYPE="$os"
+        [[ -n "$profile" ]] && PROFILE="$profile"
+        OPERATION="create"
+        return
+        ;;
+      "delete VM")
+        read -rp "VM name to delete: " VM_NAME
+        OPERATION="delete"
+        return
+        ;;
+      "list VMs")
+        OPERATION="list"
+        return
+        ;;
+      "host-setup (install KVM stack)")
+        OPERATION="host-setup"
+        return
+        ;;
+      "guest-setup (run inside guest)")
+        local rdp_ans
+        read -rp "Also set up xrdp for remote desktop? [y/N]: " rdp_ans
+        [[ "$rdp_ans" =~ ^[Yy]$ ]] && SETUP_RDP=true
+        OPERATION="guest-setup"
+        return
+        ;;
+      "resize disk (run inside guest)")
+        OPERATION="resize"
+        return
+        ;;
+      "quit")
+        exit 0
+        ;;
+      *)
+        echo "Invalid choice."
+        ;;
+    esac
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+parse_args() {
+  if (($# == 0)); then
+    interactive_menu
+    return
+  fi
+
+  case "$1" in
+    create|delete|list|host-setup|guest-setup|resize)
+      OPERATION="$1"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      # flags without a leading subcommand default to create
+      OPERATION="create"
+      ;;
+    *)
+      err "Unknown subcommand: $1"
+      usage >&2
+      exit 1
+      ;;
+  esac
+
+  while (($# > 0)); do
+    case "$1" in
+      --profile)   PROFILE="${2:-}";       shift 2 ;;
+      --os)        OS_TYPE="${2:-}";        shift 2 ;;
+      --name)      VM_NAME="${2:-}";        shift 2 ;;
+      --iso)       ISO_PATH="${2:-}";       shift 2 ;;
+      --ram)       RAM_MB="${2:-}";         shift 2 ;;
+      --vcpus)     VCPUS="${2:-}";          shift 2 ;;
+      --disk-size) DISK_GB="${2:-}";        shift 2 ;;
+      --disk)      DISK_PATH="${2:-}";      shift 2 ;;
+      --connect)   CONNECT_URI="${2:-}";    shift 2 ;;
+      --network)   NETWORK="${2:-}";        shift 2 ;;
+      --os-variant) OS_VARIANT="${2:-}";   shift 2 ;;
+      --recreate)  RECREATE=true;           shift ;;
+      --keep-storage) KEEP_STORAGE=true;   shift ;;
+      -y|--yes)    ASSUME_YES=true;         shift ;;
+      --dry-run)   DRY_RUN=true;            shift ;;
+      --console)   NO_AUTOCONSOLE=false;    shift ;;
+      --rdp)       SETUP_RDP=true;          shift ;;
+      -h|--help)   usage; exit 0 ;;
+      *)
+        err "Unknown option: $1"
+        usage >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Apply profile + OS defaults (after parsing so explicit flags win)
+# ---------------------------------------------------------------------------
+
+apply_defaults() {
+  # Profile resource defaults
+  case "$PROFILE" in
+    template)
+      RAM_MB="${RAM_MB:-$PROFILE_TEMPLATE_RAM}"
+      VCPUS="${VCPUS:-$PROFILE_TEMPLATE_VCPUS}"
+      DISK_GB="${DISK_GB:-$PROFILE_TEMPLATE_DISK}"
+      ;;
+    dev)
+      RAM_MB="${RAM_MB:-$PROFILE_DEV_RAM}"
+      VCPUS="${VCPUS:-$PROFILE_DEV_VCPUS}"
+      DISK_GB="${DISK_GB:-$PROFILE_DEV_DISK}"
+      ;;
+    test)
+      RAM_MB="${RAM_MB:-$PROFILE_TEST_RAM}"
+      VCPUS="${VCPUS:-$PROFILE_TEST_VCPUS}"
+      DISK_GB="${DISK_GB:-$PROFILE_TEST_DISK}"
+      ;;
+    *)
+      err "Unknown profile '$PROFILE'. Choose: template, dev, test"
+      exit 1
+      ;;
+  esac
+
+  # OS ISO and variant defaults
+  case "$OS_TYPE" in
+    ubuntu)
+      if [[ -z "$ISO_PATH" ]]; then
+        ISO_PATH="$(glob_first "$OS_UBUNTU_ISO_GLOB")"
+      fi
+      OS_VARIANT="${OS_VARIANT:-$OS_UBUNTU_VARIANT}"
+      ;;
+    ubuntu26)
+      if [[ -z "$ISO_PATH" ]]; then
+        ISO_PATH="$(glob_first "$OS_UBUNTU26_ISO_GLOB")"
+      fi
+      OS_VARIANT="${OS_VARIANT:-$OS_UBUNTU26_VARIANT}"
+      ;;
+    pop)
+      if [[ -z "$ISO_PATH" ]]; then
+        ISO_PATH="$(glob_first "$OS_POP_ISO_GLOB")"
+      fi
+      OS_VARIANT="${OS_VARIANT:-$OS_POP_VARIANT}"
+      ;;
+    *)
+      err "Unknown OS '$OS_TYPE'. Choose: ubuntu, ubuntu26, pop"
+      exit 1
+      ;;
+  esac
+
+  # VM name default: <os>-<profile>
+  VM_NAME="${VM_NAME:-${OS_TYPE}-${PROFILE}}"
+
+  # Disk path default
+  if [[ -z "$DISK_PATH" ]]; then
+    DISK_PATH="$HOME/.local/share/libvirt/images/${VM_NAME}.qcow2"
+  fi
+  DISK_PATH="$(expand_path "$DISK_PATH")"
+  ISO_PATH="$(expand_path "$ISO_PATH")"
+
+  # Network default
+  NETWORK="${NETWORK:-network=default,model=virtio}"
+}
+
+# ---------------------------------------------------------------------------
+# create
+# ---------------------------------------------------------------------------
+
+do_create() {
+  require_host_deps
+  apply_defaults
+
+  validate_number "--ram"       "$RAM_MB"
+  validate_number "--vcpus"     "$VCPUS"
+  validate_number "--disk-size" "$DISK_GB"
+
+  if [[ -z "$ISO_PATH" ]]; then
+    err "Could not find an ISO for OS '$OS_TYPE' in ~/Downloads."
+    printf >&2 'Download a %s ISO and place it in ~/Downloads, or pass --iso PATH.\n' "$OS_TYPE"
+    exit 1
+  fi
+
+  if [[ ! -f "$ISO_PATH" ]]; then
+    err "ISO not found: $ISO_PATH"
+    exit 1
+  fi
+
+  if $RECREATE; then
+    if vm_exists; then
+      printf 'Recreating existing VM: %s\n' "$VM_NAME"
+      virsh --connect "$CONNECT_URI" destroy "$VM_NAME" >/dev/null 2>&1 || true
+      virsh --connect "$CONNECT_URI" undefine "$VM_NAME" --remove-all-storage >/dev/null 2>&1 \
+        || virsh --connect "$CONNECT_URI" undefine "$VM_NAME" >/dev/null
+    fi
+  elif vm_exists; then
+    err "VM already exists: $VM_NAME (use --recreate to replace it)"
+    exit 1
+  fi
+
+  local cmd=(
+    virt-install
+    --connect        "$CONNECT_URI"
+    --name           "$VM_NAME"
+    --memory         "$RAM_MB"
+    --vcpus          "$VCPUS"
+    --cpu            host-passthrough
+    --os-variant     "$OS_VARIANT"
+    --cdrom          "$ISO_PATH"
+    --disk           "path=${DISK_PATH},size=${DISK_GB},bus=virtio,format=qcow2"
+    --network        "$NETWORK"
+    --graphics       "spice,listen=none,gl=off"
+    --video          virtio
+    --channel        spicevmc
+    --sound          ich9
+    --audio          spice
+    --boot           uefi
+    --controller     "type=usb,model=qemu-xhci"
+    --input          "type=tablet,bus=usb"
+    --rng            /dev/urandom
+  )
+
+  if $NO_AUTOCONSOLE; then
+    cmd+=(--noautoconsole)
+  fi
+
+  printf 'VM:       %s\n'        "$VM_NAME"
+  printf 'OS:       %s\n'        "$OS_TYPE"
+  printf 'Profile:  %s\n'        "$PROFILE"
+  printf 'vCPUs:    %s\n'        "$VCPUS"
+  printf 'RAM:      %s MiB\n'    "$RAM_MB"
+  printf 'Disk:     %s (%s GiB)\n' "$DISK_PATH" "$DISK_GB"
+  printf 'ISO:      %s\n'        "$ISO_PATH"
+  printf 'Connect:  %s\n'        "$CONNECT_URI"
+  printf 'Network:  %s\n\n'      "$NETWORK"
+
+  if $DRY_RUN; then
+    printf 'Dry run command:\n  '
+    printf '%q ' "${cmd[@]}"
+    printf '\n'
+    return
+  fi
+
+  mkdir -p "$(dirname "$DISK_PATH")"
+  "${cmd[@]}"
+
+  cat <<EOF
+
+VM created and installer started.
+
+Open it with:
+  virt-manager --connect "$CONNECT_URI" --show-domain-console "$VM_NAME"
+
+After completing the OS install in the VM, run inside the guest:
+  x_vm guest-setup
+EOF
+
+  if [[ "$PROFILE" == "template" ]]; then
+    cat <<EOF
+
+Template tip: once installed and cleaned up, shut down and take a snapshot:
+  virsh --connect "$CONNECT_URI" snapshot-create-as "$VM_NAME" clean-base
+EOF
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# delete
+# ---------------------------------------------------------------------------
+
+do_delete() {
+  require_host_deps
+
+  if [[ -z "$VM_NAME" ]]; then
+    err "--name is required for delete"
+    exit 1
+  fi
+
+  if ! vm_exists; then
+    err "VM does not exist: $VM_NAME"
+    exit 1
+  fi
+
+  if $KEEP_STORAGE; then
+    confirm "Delete (undefine) VM '$VM_NAME' but keep its disk?"
+    virsh --connect "$CONNECT_URI" destroy "$VM_NAME" >/dev/null 2>&1 || true
+    virsh --connect "$CONNECT_URI" undefine "$VM_NAME"
+    echo "VM undefined. Disk kept."
+    return
+  fi
+
+  confirm "Delete VM '$VM_NAME' and remove its disk?"
+  virsh --connect "$CONNECT_URI" destroy "$VM_NAME" >/dev/null 2>&1 || true
+
+  if ! virsh --connect "$CONNECT_URI" undefine "$VM_NAME" --remove-all-storage 2>/dev/null; then
+    virsh --connect "$CONNECT_URI" undefine "$VM_NAME"
+    local disk
+    disk="$HOME/.local/share/libvirt/images/${VM_NAME}.qcow2"
+    if [[ -f "$disk" ]]; then
+      rm -f "$disk"
+      printf 'Removed disk: %s\n' "$disk"
+    fi
+  fi
+
+  echo "VM deleted."
+}
+
+# ---------------------------------------------------------------------------
+# list
+# ---------------------------------------------------------------------------
+
+do_list() {
+  require_host_deps
+  printf 'VMs on %s:\n\n' "$CONNECT_URI"
+  virsh --connect "$CONNECT_URI" list --all
+}
+
+# ---------------------------------------------------------------------------
+# host-setup (runs on the host)
+# ---------------------------------------------------------------------------
+
+do_host_setup() {
+  if [[ $EUID -eq 0 ]]; then
+    err "Run as your normal user, not root. sudo is used where needed."
+    exit 1
+  fi
+
+  exists sudo || { err "sudo is required."; exit 1; }
+
+  echo "==> Updating package lists"
+  sudo apt update
+
+  echo "==> Installing KVM/libvirt/SPICE packages"
+  sudo apt install -y \
+    qemu-kvm \
+    qemu-system-x86 \
+    libvirt-daemon-system \
+    libvirt-clients \
+    virt-manager \
+    virt-viewer \
+    ovmf \
+    bridge-utils \
+    cpu-checker \
+    spice-client-gtk \
+    spice-vdagent \
+    gir1.2-spiceclientgtk-3.0 \
+    swtpm \
+    swtpm-tools
+
+  echo "==> Enabling libvirtd"
+  sudo systemctl enable --now libvirtd 2>/dev/null \
+    || sudo systemctl enable --now libvirt-bin 2>/dev/null \
+    || true
+
+  echo "==> Adding $USER to libvirt and kvm groups"
+  sudo usermod -aG libvirt,kvm "$USER"
+
+  echo "==> Checking virtualisation support"
+  if exists kvm-ok; then
+    kvm-ok || true
+  else
+    echo "(kvm-ok not available; verify BIOS/UEFI virtualisation settings if needed)"
+  fi
+
+  cat <<'MSG'
+
+Host setup complete.
+
+Important: log out and back in for group membership to take effect, then verify:
+  groups
+  virsh list --all
+  virt-manager
+
+For best audio/microphone support in guests, use:
+  Display:   SPICE
+  Video:     VirtIO
+  Sound:     ICH9
+  Audio:     SPICE
+MSG
+}
+
+# ---------------------------------------------------------------------------
+# guest-setup (runs inside the guest VM)
+# ---------------------------------------------------------------------------
+
+do_guest_setup() {
+  if [[ $EUID -eq 0 ]]; then
+    err "Run as your normal user, not root. sudo is used where needed."
+    exit 1
+  fi
+
+  exists sudo || { err "sudo is required."; exit 1; }
+
+  echo "==> Updating package lists"
+  sudo apt update
+
+  echo "==> Installing SPICE agent and guest tools"
+  sudo apt install -y \
+    spice-vdagent \
+    qemu-guest-agent \
+    pavucontrol
+
+  echo "==> Enabling services"
+  sudo systemctl enable --now spice-vdagentd 2>/dev/null || true
+  sudo systemctl enable --now spice-vdagent   2>/dev/null || true
+  sudo systemctl enable --now qemu-guest-agent 2>/dev/null || true
+
+  if $SETUP_RDP; then
+    echo "==> Installing xrdp for remote desktop access"
+    sudo apt install -y xrdp
+
+    sudo systemctl enable --now xrdp
+
+    # Allow xrdp through UFW if active
+    if exists ufw && sudo ufw status 2>/dev/null | grep -q "Status: active"; then
+      sudo ufw allow 3389/tcp
+      echo "==> UFW: port 3389 opened for xrdp"
+    fi
+
+    local guest_ip
+    guest_ip="$(hostname -I | awk '{print $1}')"
+
+    cat <<MSG
+
+xrdp is installed and running.
+
+Connect from the host with Remmina or any RDP client:
+  Address: ${guest_ip}:3389
+  User:    $(whoami)
+
+Or on the host:
+  remmina -c rdp://${guest_ip}
+MSG
+  fi
+
+  echo
+  echo "==> Testing microphone (5 second recording)"
+  echo "    You can skip this with Ctrl-C if you prefer."
+  if exists arecord && exists aplay; then
+    local tmpwav
+    tmpwav="$(mktemp --suffix=.wav)"
+    arecord -d 5 "$tmpwav" && aplay "$tmpwav" && rm -f "$tmpwav" || true
+  else
+    echo "    arecord/aplay not found; skipping audio test."
+  fi
+
+  cat <<'MSG'
+
+Guest setup complete.
+
+The SPICE agent enables:
+  - Clipboard sharing between host and guest
+  - Automatic display resize
+  - Improved mouse integration
+
+If audio does not work, open pavucontrol and check the output/input devices.
+MSG
+}
+
+# ---------------------------------------------------------------------------
+# resize (runs inside the guest after the disk was expanded in virt-manager)
+# ---------------------------------------------------------------------------
+
+do_resize() {
+  echo "Ubuntu VM disk resize helper"
+  echo
+  echo "Prerequisites (complete these before running):"
+  echo "  1. Shut down this VM"
+  echo "  2. In virt-manager (or virsh): increase the virtual disk size"
+  echo "  3. Boot the VM"
+  echo "  4. Run this script inside the VM (you already have)"
+  echo
+
+  read -rp "Have you already increased the disk size in virt-manager? (Type YES): " ok
+  [[ "$ok" == "YES" ]] || { echo "Resize cancelled."; exit 0; }
+
+  echo
+  echo "Current disk layout:"
+  lsblk -f
+  echo
+
+  local root_source root_fstype
+  root_source="$(findmnt -n -o SOURCE /)"
+  root_fstype="$(findmnt -n -o FSTYPE /)"
+
+  printf 'Detected root:\n  Source: %s\n  Type:   %s\n\n' "$root_source" "$root_fstype"
+
+  local partition
+  if [[ "$root_source" == /dev/mapper/* ]]; then
+    echo "LVM/encrypted layout detected."
+    local pv_device
+    pv_device="$(sudo pvs --noheadings -o pv_name 2>/dev/null | awk 'NR==1{print $1}')"
+    if [[ -z "${pv_device:-}" ]]; then
+      err "Could not detect the LVM physical volume."
+      exit 1
+    fi
+    partition="$pv_device"
+  else
+    partition="$root_source"
+  fi
+
+  local pkname partnum disk
+  pkname="$(lsblk -no PKNAME "$partition" | head -n1 || true)"
+  if [[ -z "$pkname" ]]; then
+    err "Could not detect parent disk for $partition"
+    exit 1
+  fi
+  disk="/dev/$pkname"
+  partnum="$(lsblk -no PARTN "$partition" | head -n1 || true)"
+  if [[ -z "$partnum" ]]; then
+    err "Could not detect partition number for $partition"
+    exit 1
+  fi
+
+  printf 'Resize plan:\n'
+  printf '  Disk:      %s\n'   "$disk"
+  printf '  Partition: %s\n'   "$partition"
+  printf '  Part num:  %s\n'   "$partnum"
+  printf '  Root FS:   %s\n\n' "$root_fstype"
+
+  printf 'Commands to be run:\n'
+  printf '  sudo growpart %s %s\n' "$disk" "$partnum"
+  if sudo pvs "$partition" >/dev/null 2>&1; then
+    printf '  sudo pvresize %s\n' "$partition"
+    printf '  sudo lvextend -l +100%%FREE %s\n' "$root_source"
+  fi
+  case "$root_fstype" in
+    ext4) printf '  sudo resize2fs %s\n\n' "$root_source" ;;
+    xfs)  printf '  sudo xfs_growfs /\n\n' ;;
+    *)
+      err "Unsupported filesystem: $root_fstype"
+      exit 1
+      ;;
+  esac
+
+  read -rp "Type RESIZE to apply: " confirm
+  [[ "$confirm" == "RESIZE" ]] || { echo "Resize cancelled."; exit 0; }
+
+  sudo apt install -y cloud-guest-utils
+  sudo growpart "$disk" "$partnum"
+
+  if sudo pvs "$partition" >/dev/null 2>&1; then
+    sudo pvresize "$partition"
+    sudo lvextend -l +100%FREE "$root_source"
+  fi
+
+  case "$root_fstype" in
+    ext4) sudo resize2fs "$root_source" ;;
+    xfs)  sudo xfs_growfs / ;;
+  esac
+
+  echo
+  echo "Resize complete."
+  df -h /
+  lsblk -f
+}
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+main() {
+  parse_args "$@"
+
+  case "$OPERATION" in
+    create)      do_create ;;
+    delete)      do_delete ;;
+    list)        do_list ;;
+    host-setup)  do_host_setup ;;
+    guest-setup) do_guest_setup ;;
+    resize)      do_resize ;;
+    "")
+      err "No operation selected."
+      usage >&2
+      exit 1
+      ;;
+    *)
+      err "Unknown operation: $OPERATION"
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
