@@ -1,0 +1,646 @@
+#!/usr/bin/env python3
+# x_prmpt - Generate AI workflow prompts and starter project context files.
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from collections.abc import Callable
+from pathlib import Path
+from textwrap import dedent
+
+
+CONTEXT_FILES = [
+    "project-overview.md",
+    "architecture.md",
+    "code-standards.md",
+    "ai-workflow-rules.md",
+    "ui-context.md",
+    "progress-tracker.md",
+]
+
+
+STACK_PRESETS = {
+    "next-saas": "Next.js, TypeScript, Tailwind, shadcn/ui, Postgres, auth provider, Vitest/Playwright",
+    "svelte-app": "SvelteKit, TypeScript, Tailwind, Postgres, Vitest/Playwright",
+    "python-cli": "Python 3, argparse or Typer, pytest, ruff, uv",
+    "node-cli": "Node.js, TypeScript, Commander, Vitest, tsup",
+    "custom": "Custom stack described by the user",
+}
+
+
+class PromptError(Exception):
+    """Expected CLI error."""
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        if args.command:
+            return run_command(args)
+        return run_menu()
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        return 130
+    except PromptError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="x_prmpt",
+        description="Generate focused AI workflow prompts and starter project context.",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    add_common_output_args(subparsers.add_parser("project-setup", help="Generate project context setup"))
+    add_common_output_args(subparsers.add_parser("tech-stack", help="Generate a tech stack decision prompt"))
+    add_common_output_args(subparsers.add_parser("build-plan", help="Generate a build plan prompt"))
+    add_common_output_args(
+        subparsers.add_parser("feature-work-order", help="Generate a feature work-order prompt")
+    )
+    add_common_output_args(subparsers.add_parser("resume", help="Generate a project resume prompt"))
+
+    pr_parser = subparsers.add_parser("pr", help="Generate PR workflow prompts")
+    pr_subparsers = pr_parser.add_subparsers(dest="pr_command")
+    add_common_output_args(pr_subparsers.add_parser("ship", help="Generate a ship-work prompt"))
+    add_common_output_args(
+        pr_subparsers.add_parser("fix-comments", help="Generate a PR review-comments prompt")
+    )
+
+    return parser
+
+
+def add_common_output_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--out", type=Path, help="Write the generated prompt to this file")
+    parser.add_argument("--write", action="store_true", help="Write recipe files when supported")
+    parser.add_argument("--no-preview", action="store_true", help="Do not print generated output")
+
+
+def run_command(args: argparse.Namespace) -> int:
+    if args.command == "project-setup":
+        output, files = project_setup_recipe()
+    elif args.command == "tech-stack":
+        output, files = tech_stack_recipe()
+    elif args.command == "build-plan":
+        output, files = build_plan_recipe()
+    elif args.command == "feature-work-order":
+        output, files = feature_work_order_recipe()
+    elif args.command == "resume":
+        output, files = resume_recipe()
+    elif args.command == "pr" and args.pr_command == "ship":
+        output, files = pr_ship_recipe()
+    elif args.command == "pr" and args.pr_command == "fix-comments":
+        output, files = pr_fix_comments_recipe()
+    else:
+        raise PromptError("Unknown command.")
+
+    emit_output(output, files, args.out, args.write, not args.no_preview)
+    return 0
+
+
+def run_menu() -> int:
+    print("x_prmpt")
+    print("Generate AI-ready workflow prompts.\n")
+
+    choices: list[tuple[str, Callable[[], tuple[str, dict[Path, str]]], bool]] = [
+        ("Project setup context files", project_setup_recipe, True),
+        ("Tech stack builder prompt", tech_stack_recipe, False),
+        ("Build plan with burndown", build_plan_recipe, False),
+        ("Feature work order from build plan", feature_work_order_recipe, False),
+        ("Ship work PR prompt", pr_ship_recipe, False),
+        ("Fix PR review comments prompt", pr_fix_comments_recipe, False),
+        ("Resume project prompt", resume_recipe, False),
+    ]
+
+    selected = choose("What do you want to build?", [choice[0] for choice in choices])
+    label, recipe, supports_write = choices[selected]
+    print(f"\nSelected: {label}\n")
+
+    output, files = recipe()
+    preview = yes_no("Print generated output?", default=True)
+    out_file = ask_optional_path("Write the generated prompt to a file?")
+    write_files = supports_write and yes_no("Write generated project files too?", default=False)
+
+    emit_output(output, files, out_file, write_files, preview)
+    return 0
+
+
+def emit_output(
+    output: str,
+    files: dict[Path, str],
+    out_file: Path | None,
+    write_files: bool,
+    preview: bool,
+) -> None:
+    if preview:
+        print("\n" + "=" * 72)
+        print(output.strip())
+        print("=" * 72 + "\n")
+
+    if out_file:
+        write_file(out_file, output)
+        print(f"Wrote prompt: {out_file}")
+
+    if write_files:
+        for path, content in files.items():
+            write_file(path, content)
+            print(f"Wrote file: {path}")
+    elif files:
+        print("Generated project files are available with --write or the menu write option.")
+
+
+def project_setup_recipe() -> tuple[str, dict[Path, str]]:
+    project_name = ask("Project name")
+    project_summary = ask("One-sentence project summary")
+    context_dir = ask("Context folder", default="context")
+    entrypoint = choose(
+        "Primary agent entrypoint",
+        ["AGENTS.md", "CLAUDE.md", "Both AGENTS.md and CLAUDE.md"],
+    )
+    include_cursor_rule = yes_no("Include .cursor/rules/project.mdc?", default=True)
+
+    context_path = Path(context_dir)
+    files: dict[Path, str] = {
+        context_path / file_name: context_file_template(file_name, project_name, project_summary)
+        for file_name in CONTEXT_FILES
+    }
+
+    if entrypoint in (0, 2):
+        files[Path("AGENTS.md")] = agents_template(context_dir)
+    if entrypoint in (1, 2):
+        files[Path("CLAUDE.md")] = agents_template(context_dir)
+    if include_cursor_rule:
+        files[Path(".cursor/rules/project.mdc")] = cursor_rule_template(context_dir)
+
+    prompt = f"""
+    Set up the project context foundation for {project_name}.
+
+    Project summary:
+    {project_summary}
+
+    Create or update these files:
+    {format_file_list(files)}
+
+    Rules:
+    - Keep the context files concise and specific.
+    - Use the six-file context system as the canonical source of project truth.
+    - Make agent entrypoint files point to the context files instead of duplicating long rules.
+    - Do not start feature implementation yet.
+    - Report any missing product or architecture decisions before guessing.
+    """
+    return clean(prompt), files
+
+
+def tech_stack_recipe() -> tuple[str, dict[Path, str]]:
+    preset_names = list(STACK_PRESETS)
+    selected = choose("Choose a stack preset", [f"{name}: {STACK_PRESETS[name]}" for name in preset_names])
+    preset = preset_names[selected]
+    custom_stack = ask("Describe your stack", default=STACK_PRESETS[preset])
+    project_type = ask("What kind of product is this?")
+    constraints = ask("Important constraints", default="Keep the stack simple and avoid speculative dependencies.")
+
+    prompt = f"""
+    Help me turn this technology stack into project architecture and code standards.
+
+    Product type:
+    {project_type}
+
+    Stack:
+    {custom_stack}
+
+    Constraints:
+    {constraints}
+
+    Generate two sections:
+
+    1. Architecture decisions
+       - Stack table by layer
+       - Folder ownership boundaries
+       - Data/storage/auth model if relevant
+       - Invariants the codebase must never violate
+
+    2. Code standards
+       - Naming and file organization
+       - Testing expectations
+       - Framework-specific rules
+       - Dependency rules
+       - Verification commands
+
+    Be concrete. If a decision is missing, ask before inventing it.
+    """
+    return clean(prompt), {}
+
+
+def build_plan_recipe() -> tuple[str, dict[Path, str]]:
+    project = ask("Project or feature name")
+    source = ask(
+        "Source context paths",
+        default="context/project-overview.md, context/architecture.md",
+    )
+    outcome = ask("What should exist when the build is complete?")
+    mode = choose(
+        "Build slicing mode",
+        [
+            "Hybrid: M0 setup, then vertical tracer bullets",
+            "Vertical only: every slice produces visible behavior",
+            "Horizontal: foundations first, then features",
+        ],
+    )
+    output_path = ask("Build plan output path", default="context/build-plan.md")
+
+    mode_text = ["hybrid", "vertical", "horizontal"][mode]
+    prompt = f"""
+    Generate a build plan at:
+      {output_path}
+
+    Project or feature:
+    {project}
+
+    Source context:
+    {source}
+
+    Desired final outcome:
+    {outcome}
+
+    Slicing mode:
+    {mode_text}
+
+    Use this exact structure:
+
+    # Build Plan - {project}
+
+    ## Build Goal
+    One paragraph describing the complete outcome.
+
+    ## Build Principles
+    - Prefer tracer bullets: each slice should produce one visible, verifiable result.
+    - Keep each slice inside a clear system boundary.
+    - Introduce dependencies just in time.
+    - Avoid speculative foundations.
+    - Use horizontal setup only when required to unlock later vertical work.
+
+    ## Milestone Map
+    List M0, M1, M2, etc. Each milestone must include:
+    - name
+    - purpose
+    - user-visible result
+    - dependencies
+
+    ## Burndown Table
+    Use this table format:
+
+    | Status | Slice | User-visible result | Boundary | Depends on | Verify |
+    | --- | --- | --- | --- | --- | --- |
+    | [ ] | M0 Example | Concrete visible result | Tooling/UI/API/etc | None | Exact command or manual check |
+
+    ## Risk Register
+    List unresolved decisions, likely complexity traps, and what to verify early.
+
+    ## Next Feature Prompt Inputs
+    For each milestone, include the values needed by the feature work-order template:
+    - M_NUMBER
+    - slug
+    - milestone name
+    - allowed files/folders
+    - explicit out-of-bounds work
+    - acceptance criteria
+    - completion updates required for progress tracking
+
+    Rules:
+    - Do not write implementation code.
+    - Ask questions first if the feature boundaries are unclear.
+    - Make the burndown table useful enough that I can select one row and generate a feature work order from it.
+    """
+    return clean(prompt), {}
+
+
+def feature_work_order_recipe() -> tuple[str, dict[Path, str]]:
+    build_plan = ask("Build plan path", default="context/build-plan.md")
+    milestone_number = ask("Milestone number", default="M0")
+    milestone_name = ask("Milestone name")
+    slug = ask("Slug", default=slugify(milestone_name))
+    allowed = ask("Allowed files/folders")
+    out_of_bounds = ask("Out-of-bounds work")
+    acceptance = ask("Acceptance criteria")
+    output_path = ask(
+        "Work-order output path",
+        default=f"context/features/{milestone_number}-{slug}.md",
+    )
+
+    prompt = f"""
+    Generate a work order file at:
+      {output_path}
+
+    Focus on the {milestone_number} section of {build_plan}.
+
+    Milestone name:
+    {milestone_name}
+
+    Use exactly this structure:
+
+    ---
+    # {milestone_number} - {milestone_name}
+
+    ## What is being worked on
+    One paragraph. Explain what this milestone adds and why it matters.
+
+    ## What the AI needs to know
+    Bullet list of relevant types, constraints, file paths, and rules from the project context.
+    Extract only what is load-bearing for this milestone.
+
+    ## What the AI is allowed to do
+    Allowed:
+    {bullet_lines(allowed)}
+
+    Out of bounds:
+    {bullet_lines(out_of_bounds)}
+
+    ## What needs to be done
+    Ordered task list from {build_plan} for {milestone_number}. Break each task into the smallest concrete step that can be verified.
+
+    ## Definition of success
+    {bullet_lines(acceptance)}
+
+    ## On completion
+    - Flip {milestone_number} in the progress tracker from [ ] to [x].
+    - Update current phase and next action.
+    - Add shipped modules with path and description.
+    - Record deferred concerns in known issues or decisions to revisit.
+    - Update code standards if a new durable pattern was established.
+    ---
+
+    Do not write any code yet. Output the work order file only. I will review it before implementation starts.
+    """
+    follow_up = f"""
+    Follow-up implementation prompt after review:
+
+    The work order at {output_path} has been reviewed and approved.
+
+    Implement the milestone step by step, following the order in "What needs to be done".
+
+    Rules:
+    - Stay inside the boundaries listed in "What the AI is allowed to do".
+    - Write tests before or alongside implementation where practical.
+    - Treat the acceptance criteria as the test cases.
+    - After each step, confirm it is complete before moving to the next.
+    - Do not mark the milestone done until every item in "Definition of success" passes.
+    - When finished, complete all steps in "On completion".
+    """
+    return clean(prompt) + "\n\n---\n\n" + clean(follow_up), {}
+
+
+def pr_ship_recipe() -> tuple[str, dict[Path, str]]:
+    branch = ask("Branch name", default="feature/M0-project-setup")
+    title = ask("PR title")
+    body = ask("Optional PR body bullets", default="What changed; How to verify; Link to milestone/work order")
+    verify = ask("Verification commands", default="run tests and build")
+
+    prompt = f"""
+    Ship the current work.
+
+    Branch name: {branch}
+    PR title: {title}
+
+    Steps:
+    1. Confirm all acceptance criteria for the current slice pass: {verify}.
+    2. Stage only files that belong to this slice. Do not include unrelated changes, secrets, or debug code.
+    3. Create one focused commit. Message: imperative mood, explain why not what, and match recent git log style.
+    4. Create branch {branch} from the current HEAD if not already on it.
+    5. Push {branch} to origin with upstream set.
+    6. Open a PR targeting main with title "{title}" and this body guidance:
+       {body}
+    7. Print the PR URL when done.
+
+    Do not merge. Do not checkout main. I will review the PR.
+    """
+    return clean(prompt), {}
+
+
+def pr_fix_comments_recipe() -> tuple[str, dict[Path, str]]:
+    pr_number = ask("PR number")
+    branch = ask("Branch name, or leave blank for PR head branch", default="PR head branch")
+    reviewer_sources = ask("Reviewer sources", default="human reviewers, CodeRabbit, Copilot")
+
+    prompt = f"""
+    Read review comments on PR #{pr_number} and make the necessary adjustments.
+
+    Reviewer sources:
+    {reviewer_sources}
+
+    Steps:
+    1. Use gh to fetch PR #{pr_number} details, review comments, and inline code comments.
+    2. Summarize each actionable item before changing code.
+    3. Checkout {branch} if not already on the correct branch.
+    4. Pull latest from origin for that branch.
+    5. Fix every actionable comment. Skip nitpicks I explicitly resolved or marked won't-fix.
+    6. Run tests and fix regressions.
+    7. Commit with a message that references the review, for example "Address PR #{pr_number} review feedback".
+    8. Push to the same branch.
+    9. Reply on GitHub to each addressed thread with a one-line note if possible.
+    10. Print a checklist: comment -> done / deferred / needs my input.
+
+    Do not merge. I will re-review.
+    """
+    return clean(prompt), {}
+
+
+def resume_recipe() -> tuple[str, dict[Path, str]]:
+    entrypoint = ask("Entrypoint file", default="AGENTS.md")
+    progress = ask("Progress tracker", default="context/progress-tracker.md")
+    build_plan = ask("Build plan", default="context/build-plan.md")
+
+    prompt = f"""
+    Resume this project from its documented state.
+
+    First read:
+    1. {entrypoint}
+    2. {progress}
+    3. {build_plan}
+
+    Then report:
+    - current phase
+    - last completed slice
+    - next recommended action
+    - any blockers or missing decisions
+
+    Do not write code until I confirm the next work order.
+    """
+    return clean(prompt), {}
+
+
+def context_file_template(file_name: str, project_name: str, project_summary: str) -> str:
+    title = file_name.removesuffix(".md").replace("-", " ").title()
+
+    if file_name == "progress-tracker.md":
+        return clean(
+            f"""
+            # Progress Tracker
+
+            Update this file after every meaningful implementation change.
+
+            ## Current Phase
+
+            - Project setup
+
+            ## Current Goal
+
+            - Establish the project context foundation for {project_name}.
+
+            ## Completed
+
+            - None yet.
+
+            ## In Progress
+
+            - Context setup.
+
+            ## Next Up
+
+            - Generate the build plan.
+
+            ## Open Questions
+
+            - None recorded yet.
+
+            ## Architecture Decisions
+
+            - None recorded yet.
+
+            ## Session Notes
+
+            - {project_summary}
+            """
+        )
+
+    return clean(
+        f"""
+        # {title}
+
+        Project: {project_name}
+
+        Summary:
+        {project_summary}
+
+        ## Purpose
+
+        Fill this file with project-specific decisions before implementation starts.
+
+        ## Notes
+
+        - Replace placeholders with concrete decisions.
+        - Keep this file current when implementation changes the project truth.
+        """
+    )
+
+
+def agents_template(context_dir: str) -> str:
+    return clean(
+        f"""
+        ## Application Building Context
+
+        Read the following files in order before implementing or making architectural decisions:
+
+        1. `{context_dir}/project-overview.md` - product definition, goals, features, and scope
+        2. `{context_dir}/architecture.md` - system structure, boundaries, storage model, and invariants
+        3. `{context_dir}/ui-context.md` - theme, colors, typography, and component conventions
+        4. `{context_dir}/code-standards.md` - implementation rules and conventions
+        5. `{context_dir}/ai-workflow-rules.md` - development workflow, scoping rules, and delivery approach
+        6. `{context_dir}/progress-tracker.md` - current phase, completed work, open questions, and next steps
+
+        Update `{context_dir}/progress-tracker.md` after each meaningful implementation change.
+
+        If implementation changes architecture, scope, or standards, update the relevant context file before continuing.
+        """
+    )
+
+
+def cursor_rule_template(context_dir: str) -> str:
+    return clean(
+        f"""
+        ---
+        description: Project context entrypoint
+        alwaysApply: true
+        ---
+
+        Before implementing, read the project entrypoint instructions and the context files in `{context_dir}/`.
+        Treat those files as the source of truth for product intent, architecture, standards, workflow, UI decisions, and progress.
+        """
+    )
+
+
+def ask(prompt: str, default: str | None = None) -> str:
+    suffix = f" [{default}]" if default else ""
+    value = read_input(f"{prompt}{suffix}: ").strip()
+    if value:
+        return value
+    if default is not None:
+        return default
+    raise PromptError(f"{prompt} is required.")
+
+
+def ask_optional_path(prompt: str) -> Path | None:
+    value = read_input(f"{prompt} [leave blank for no]: ").strip()
+    return Path(value) if value else None
+
+
+def yes_no(prompt: str, default: bool) -> bool:
+    suffix = "Y/n" if default else "y/N"
+    value = read_input(f"{prompt} [{suffix}]: ").strip().lower()
+    if not value:
+        return default
+    return value in {"y", "yes"}
+
+
+def choose(prompt: str, options: list[str]) -> int:
+    print(prompt)
+    for index, option in enumerate(options, start=1):
+        print(f"  {index}. {option}")
+
+    while True:
+        value = read_input("Select: ").strip()
+        if value.isdigit() and 1 <= int(value) <= len(options):
+            return int(value) - 1
+        print(f"Enter a number from 1 to {len(options)}.")
+
+
+def read_input(prompt: str) -> str:
+    try:
+        return input(prompt)
+    except EOFError as error:
+        raise PromptError("Input ended before all required answers were provided.") from error
+
+
+def write_file(path: Path, content: str) -> None:
+    if path.exists() and not yes_no(f"{path} exists. Overwrite?", default=False):
+        print(f"Skipped existing file: {path}")
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content.strip() + "\n", encoding="utf-8")
+
+
+def clean(value: str) -> str:
+    return dedent(value).strip()
+
+
+def format_file_list(files: dict[Path, str]) -> str:
+    return "\n".join(f"- `{path}`" for path in files)
+
+
+def bullet_lines(value: str) -> str:
+    parts = [part.strip() for part in re.split(r"[;\n]", value) if part.strip()]
+    return "\n".join(f"- {part}" for part in parts) if parts else "- None"
+
+
+def slugify(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.lower()).strip("-")
+    return slug or "feature"
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
