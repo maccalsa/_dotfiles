@@ -35,6 +35,7 @@ x_extract|Extract archives by extension (tar.gz, zip, 7z, etc.)
 x_json|Pretty-print JSON (jq or python)
 x_md2pdf|Markdown to PDF (--input, --input-type md|url, optional --output / --stylesheet)
 x_password|Generate random password (copies to clipboard if xclip)
+x_prmpt|Generate AI workflow prompts and project context files (-c to copy)
 
 ## Docker
 x_docker_clean|Prune images, containers, volumes (menu or subcommands)

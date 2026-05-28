@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -76,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def add_common_output_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-c", "--copy", action="store_true", help="Copy the generated prompt to the clipboard")
     parser.add_argument("--out", type=Path, help="Write the generated prompt to this file")
     parser.add_argument("--write", action="store_true", help="Write recipe files when supported")
     parser.add_argument("--no-preview", action="store_true", help="Do not print generated output")
@@ -99,7 +102,7 @@ def run_command(args: argparse.Namespace) -> int:
     else:
         raise PromptError("Unknown command.")
 
-    emit_output(output, files, args.out, args.write, not args.no_preview)
+    emit_output(output, files, args.out, args.write, not args.no_preview, args.copy)
     return 0
 
 
@@ -124,9 +127,10 @@ def run_menu() -> int:
     output, files = recipe()
     preview = yes_no("Print generated output?", default=True)
     out_file = ask_optional_path("Write the generated prompt to a file?")
+    copy = yes_no("Copy generated prompt to clipboard?", default=False)
     write_files = supports_write and yes_no("Write generated project files too?", default=False)
 
-    emit_output(output, files, out_file, write_files, preview)
+    emit_output(output, files, out_file, write_files, preview, copy)
     return 0
 
 
@@ -136,6 +140,7 @@ def emit_output(
     out_file: Path | None,
     write_files: bool,
     preview: bool,
+    copy: bool,
 ) -> None:
     if preview:
         print("\n" + "=" * 72)
@@ -145,6 +150,9 @@ def emit_output(
     if out_file:
         write_file(out_file, output)
         print(f"Wrote prompt: {out_file}")
+
+    if copy:
+        copy_to_clipboard(output)
 
     if write_files:
         for path, content in files.items():
@@ -622,6 +630,41 @@ def write_file(path: Path, content: str) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content.strip() + "\n", encoding="utf-8")
+
+
+def copy_to_clipboard(content: str) -> None:
+    text = content.strip() + "\n"
+    commands = [
+        ["wl-copy"],
+        ["xclip", "-selection", "clipboard"],
+        ["xsel", "--clipboard", "--input"],
+        ["pbcopy"],
+    ]
+    failures: list[str] = []
+
+    for command in commands:
+        if shutil.which(command[0]) is None:
+            continue
+
+        result = subprocess.run(
+            command,
+            input=text,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode == 0:
+            print("Copied prompt to clipboard.")
+            return
+
+        message = result.stderr.strip() or f"exit code {result.returncode}"
+        failures.append(f"{command[0]}: {message}")
+
+    if failures:
+        raise PromptError("Clipboard command failed. " + "; ".join(failures))
+
+    raise PromptError("No clipboard command found. Install wl-clipboard, xclip, xsel, or use pbcopy on macOS.")
 
 
 def clean(value: str) -> str:
