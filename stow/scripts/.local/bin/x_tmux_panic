@@ -1,0 +1,326 @@
+#!/usr/bin/env bash
+
+# x_tmux_panic - Generate a tmux panic sheet from live bindings and defaults
+# Compares the current tmux server against a clean tmux server with no config.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: x_tmux_panic [OPTIONS]
+
+Generate a tmux panic sheet that compares your live tmux key bindings with
+tmux defaults loaded from a clean server with no user config.
+
+The report includes:
+  - Custom bindings
+  - Overridden default bindings
+  - Useful unchanged defaults
+  - All unchanged default bindings
+  - Current prefix and important options
+  - Copy-mode vi/emacs bindings
+
+Options:
+  -o, --output FILE       Write the report to FILE
+  -p, --print            Print the report to stdout instead of opening tmux UI
+      --print-tmux-config
+                          Print a tmux.conf binding snippet
+  -h, --help             Show this help
+
+Examples:
+  x_tmux_panic
+  x_tmux_panic --print
+  x_tmux_panic --output /tmp/tmux-panic.txt
+
+tmux integration:
+  Add this to ~/.tmux.conf:
+
+    bind-key H run-shell "$HOME/.local/bin/x_tmux_panic"
+
+  Reload tmux:
+
+    tmux source-file ~/.tmux.conf
+
+  Then press:
+
+    Prefix + H
+
+Why H?
+  Prefix + H is easy to remember as Help, while Prefix + ? remains tmux's
+  native list-keys command.
+
+Notes:
+  This script compares the live tmux server, not only ~/.tmux.conf. That means
+  manual changes made inside the current tmux session are included too.
+EOF
+}
+
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
+print_tmux_config() {
+    cat <<'EOF'
+# x_tmux_panic: open a live tmux panic sheet
+bind-key H run-shell "$HOME/.local/bin/x_tmux_panic"
+EOF
+}
+
+parse_keys() {
+    awk '
+        {
+            table = "prefix"
+            key = ""
+            command_start = 0
+
+            for (i = 1; i <= NF; i++) {
+                if ($i == "-T" && (i + 2) <= NF) {
+                    table = $(i + 1)
+                    key = $(i + 2)
+                    command_start = i + 3
+                    break
+                }
+            }
+
+            if (key == "") {
+                for (i = 2; i <= NF; i++) {
+                    if ($i !~ /^-/) {
+                        key = $i
+                        command_start = i + 1
+                        break
+                    }
+                }
+            }
+
+            command = ""
+            for (i = command_start; i <= NF; i++) {
+                command = command (command == "" ? "" : " ") $i
+            }
+
+            if (key != "") {
+                print table "\t" key "\t" command "\t" $0
+            }
+        }
+    '
+}
+
+build_report() {
+    local output_file="$1"
+    local work_dir="$2"
+    local clean_socket="$3"
+    local clean_session="$4"
+    local current_keys="${work_dir}/current.keys"
+    local default_keys="${work_dir}/default.keys"
+    local current_parsed="${work_dir}/current.parsed"
+    local default_parsed="${work_dir}/default.parsed"
+
+    tmux -L "$clean_socket" -f /dev/null new-session -d -s "$clean_session" >/dev/null 2>&1
+
+    tmux list-keys > "$current_keys"
+    tmux -L "$clean_socket" list-keys > "$default_keys"
+
+    parse_keys < "$current_keys" | sort > "$current_parsed"
+    parse_keys < "$default_keys" | sort > "$default_parsed"
+
+    awk -F '\t' '
+        FNR == NR {
+            default_cmd[$1 SUBSEP $2] = $3
+            default_line[$1 SUBSEP $2] = $4
+            default_seen[$1 SUBSEP $2] = 1
+            next
+        }
+
+        {
+            k = $1 SUBSEP $2
+            current_cmd[k] = $3
+            current_line[k] = $4
+            current_seen[k] = 1
+
+            if (!(k in default_seen)) {
+                custom[k] = 1
+            } else if (default_cmd[k] != $3) {
+                overridden[k] = 1
+            } else {
+                unchanged[k] = 1
+            }
+        }
+
+        END {
+            print "tmux panic sheet"
+            print "================"
+            print ""
+            print "Generated from your live tmux server."
+            print ""
+            print "How to read this"
+            print "----------------"
+            print "Custom bindings      = keys you added that are not in default tmux"
+            print "Overridden defaults  = default tmux keys whose command you changed"
+            print "Unchanged defaults   = default tmux keys still available"
+            print ""
+
+            print "Custom bindings"
+            print "---------------"
+            count = 0
+            for (k in custom) {
+                split(k, p, SUBSEP)
+                printf "[%s] %s -> %s\n", p[1], p[2], current_cmd[k]
+                count++
+            }
+            if (count == 0) print "(none detected)"
+            print ""
+
+            print "Overridden defaults"
+            print "-------------------"
+            count = 0
+            for (k in overridden) {
+                split(k, p, SUBSEP)
+                printf "[%s] %s\n", p[1], p[2]
+                printf "  current: %s\n", current_cmd[k]
+                printf "  default: %s\n", default_cmd[k]
+                print ""
+                count++
+            }
+            if (count == 0) print "(none detected)"
+            print ""
+
+            print "Useful unchanged defaults"
+            print "-------------------------"
+            useful["prefix d"] = "detach-client"
+            useful["prefix c"] = "new-window"
+            useful["prefix ,"] = "rename-window"
+            useful["prefix %"] = "split-window -h"
+            useful["prefix \""] = "split-window"
+            useful["prefix z"] = "resize-pane -Z"
+            useful["prefix x"] = "kill-pane"
+            useful["prefix ["] = "copy-mode"
+            useful["prefix ]"] = "paste-buffer"
+            useful["prefix s"] = "choose-tree -Zs"
+            useful["prefix w"] = "choose-tree -Zw"
+            useful["prefix :"] = "command-prompt"
+            useful["prefix ?"] = "list-keys"
+
+            found = 0
+            for (label in useful) {
+                split(label, p, " ")
+                table = p[1]
+                key = p[2]
+                k = table SUBSEP key
+
+                if (k in unchanged) {
+                    printf "[%s] %s -> %s\n", table, key, current_cmd[k]
+                    found++
+                }
+            }
+            if (found == 0) print "(none of the common defaults were found unchanged)"
+            print ""
+
+            print "All unchanged default bindings"
+            print "------------------------------"
+            count = 0
+            for (k in unchanged) {
+                split(k, p, SUBSEP)
+                printf "[%s] %s -> %s\n", p[1], p[2], current_cmd[k]
+                count++
+            }
+            if (count == 0) print "(none detected)"
+        }
+    ' "$default_parsed" "$current_parsed" > "$output_file"
+
+    {
+        echo
+        echo
+        echo "Current prefix"
+        echo "--------------"
+        tmux show-options -g prefix 2>/dev/null || true
+
+        echo
+        echo "Important options"
+        echo "-----------------"
+        tmux show-options -g 2>/dev/null \
+            | grep -E '^(prefix|mode-keys|mouse|status|base-index|pane-base-index|renumber-windows|escape-time|history-limit|set-clipboard)' \
+            || true
+
+        echo
+        echo "Copy-mode vi bindings"
+        echo "---------------------"
+        tmux list-keys -T copy-mode-vi 2>/dev/null || true
+
+        echo
+        echo "Copy-mode emacs bindings"
+        echo "------------------------"
+        tmux list-keys -T copy-mode 2>/dev/null || true
+    } >> "$output_file"
+}
+
+open_report() {
+    local report_file="$1"
+
+    if [[ -z "${TMUX:-}" ]]; then
+        echo "Report written to: $report_file"
+        echo "Open it with: less -R '$report_file'"
+        return 0
+    fi
+
+    if tmux display-popup -E -w 90% -h 90% "less -R '$report_file'" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    tmux new-window -n tmux-panic "less -R '$report_file'"
+}
+
+main() {
+    local output_file="${TMPDIR:-/tmp}/x-tmux-panic-sheet.txt"
+    local print_report=false
+    local work_dir
+    local clean_socket
+    local clean_session
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -o|--output)
+                [[ $# -ge 2 ]] || die "$1 requires a file path"
+                output_file="$2"
+                shift 2
+                ;;
+            -p|--print)
+                print_report=true
+                shift
+                ;;
+            --print-tmux-config)
+                print_tmux_config
+                exit 0
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "Unknown option: $1"
+                ;;
+        esac
+    done
+
+    command -v tmux >/dev/null 2>&1 || die "tmux is not installed or not on PATH"
+    tmux list-sessions >/dev/null 2>&1 || die "no live tmux server found; run inside tmux or start a tmux session first"
+
+    work_dir="$(mktemp -d)"
+    clean_socket="x-tmux-panic-defaults-${RANDOM}-$$"
+    clean_session="x-tmux-panic-defaults"
+
+    cleanup() {
+        tmux -L "$clean_socket" kill-server >/dev/null 2>&1 || true
+        rm -rf "$work_dir"
+    }
+    trap cleanup EXIT
+
+    build_report "$output_file" "$work_dir" "$clean_socket" "$clean_session"
+
+    if [[ "$print_report" == "true" ]]; then
+        sed -n '1,$p' "$output_file"
+    else
+        open_report "$output_file"
+    fi
+}
+
+main "$@"

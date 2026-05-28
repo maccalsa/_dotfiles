@@ -22,6 +22,7 @@ x_phoenix_enhance|Add Oban/auth/etc to existing Phoenix project
 x_port|Port ops: list, query, kill, monitor (subcommands or menu)
 x_ramdisk|tmpfs/RAM disk: create, list, unmount (subcommands or menu)
 x_spring_init|Quick Spring Boot from start.spring.io (-n NAME or interactive)
+x_tmux_panic|tmux panic sheet: compare live bindings with defaults and open help popup
 x_ts_lib_create|TypeScript library scaffold (tsup, ESLint, Vitest)
 x_tunnel|SSH tunnel: local/remote port forwarding
 x_vm|KVM/libvirt VM manager: create, delete, list, host-setup, guest-setup, resize
