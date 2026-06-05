@@ -1,0 +1,1721 @@
+#!/usr/bin/env python3
+# x_ctx - Generate PRD-driven AI coding context and workflow prompts.
+"""
+x_ctx
+
+A single-file Python CLI for generating high-quality AI coding prompts from a PRD
+and durable project context files.
+
+It does not call an LLM.
+It generates prompts, prints them by default, and can write or copy them on request.
+
+Usage examples:
+
+  x_ctx init
+  x_ctx init --agents agents --cursor-rule
+  x_ctx overview
+  x_ctx architecture --stack nextjs
+  x_ctx standards --stack nextjs
+  x_ctx ui
+  x_ctx tracker
+  x_ctx feature "authentication"
+  x_ctx next-feature
+  x_ctx implement-next
+  x_ctx compile-context
+  x_ctx ship --branch feature/M0-project-setup --title "M0: project setup"
+  x_ctx pr-approved 12
+  x_ctx pr-comments 12 --branch feature/M0-project-setup
+  x_ctx workflow
+"""
+
+from __future__ import annotations
+
+import argparse
+import platform
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
+
+
+APP_NAME = "x_ctx"
+
+DEFAULT_PRD = "prd.md"
+CONTEXT_DIR = "context"
+FEATURES_DIR = "features"
+
+
+# ---------------------------------------------------------------------------
+# File templates
+# ---------------------------------------------------------------------------
+
+PRD_TEMPLATE = """# [Project Name]
+
+## Overview
+
+[One paragraph describing what this application does, who it is for, and what problem it solves.]
+
+## Goals
+
+1. [Goal one — specific and measurable]
+2. [Goal two]
+3. [Goal three]
+
+## Core User Flow
+
+1. [Step one — e.g. User signs in]
+2. [Step two]
+3. [Step three]
+4. [Continue until the core flow is complete]
+
+## Features
+
+### [Feature Category One]
+
+- [Feature description]
+- [Feature description]
+
+### [Feature Category Two]
+
+- [Feature description]
+- [Feature description]
+
+## Scope
+
+### In Scope
+
+- [What you are building]
+- [What you are building]
+
+### Out of Scope
+
+- [What you are explicitly not building]
+- [What you are explicitly not building]
+
+## Success Criteria
+
+1. [Specific, verifiable condition — e.g. A signed-in user can create and open a project]
+2. [Condition two]
+3. [Condition three]
+"""
+
+PROGRESS_TRACKER_TEMPLATE = """# Progress Tracker
+
+Update this file after every meaningful implementation change.
+
+## Current Phase
+
+- Not started
+
+## Current Goal
+
+- Define the project context.
+
+## Completed
+
+- None yet.
+
+## In Progress
+
+- None yet.
+
+## Next Up
+
+- Generate project overview from PRD.
+- Generate architecture context.
+- Generate code standards.
+- Generate UI context.
+- Define the first feature.
+
+## Open Questions
+
+- None yet.
+
+## Architecture Decisions
+
+- None yet.
+
+## Session Notes
+
+- Project has been initialised with x_ctx.
+"""
+
+AGENT_ENTRYPOINT_TEMPLATE = """# Project Context
+
+Before implementing, read the following files in order:
+
+1. `{context_dir}/project-overview.md` - product definition, goals, features, and scope
+2. `{context_dir}/architecture.md` - system structure, boundaries, storage model, and invariants
+3. `{context_dir}/ui-context.md` - theme, colors, typography, and component conventions
+4. `{context_dir}/code-standards.md` - implementation rules and conventions
+5. `{context_dir}/progress-tracker.md` - current phase, completed work, open questions, and next steps
+
+Update `{context_dir}/progress-tracker.md` after each meaningful implementation change.
+
+If implementation changes architecture, scope, UI direction, or standards, update the relevant context file before continuing.
+"""
+
+CURSOR_RULE_TEMPLATE = """---
+description: Project context entrypoint
+alwaysApply: true
+---
+
+Before implementing, read the project context files in `{context_dir}/`.
+Treat those files as the source of truth for product intent, architecture, standards, UI decisions, and progress.
+"""
+
+
+
+# ---------------------------------------------------------------------------
+# Stack decorators
+# ---------------------------------------------------------------------------
+
+GENERAL_STANDARDS = """## General Engineering Standards
+
+- Keep modules small, explicit, and single-purpose.
+- Fix root causes rather than layering workarounds.
+- Prefer boring, obvious code over clever abstractions.
+- Do not mix unrelated concerns in the same component, service, route, or module.
+- Validate external input at system boundaries before trusting it.
+- Keep business rules close to the domain they affect.
+- Do not introduce background work, queues, caches, or persistence unless the architecture context requires them.
+- Prefer clear names over comments explaining unclear code.
+- Every meaningful implementation change should update `context/progress-tracker.md`.
+"""
+
+STACK_DECORATORS: dict[str, str] = {
+    "nextjs": """## Next.js / TypeScript Standards
+
+- Use TypeScript strict mode.
+- Default to Server Components.
+- Add `use client` only where browser interactivity requires it.
+- Keep route handlers focused on one responsibility.
+- Validate request bodies before running logic.
+- Enforce authentication and ownership before mutations.
+- Keep database access outside UI components.
+- Prefer small server-side functions over large route handlers.
+- Use CSS variables and shared UI tokens rather than hardcoded styles.
+- Do not introduce global client state unless there is a clear need.
+""",
+    "sveltekit": """## SvelteKit Standards
+
+- Keep server-only logic in server routes, server load functions, or server modules.
+- Validate external input before mutation.
+- Use form actions for simple mutations where appropriate.
+- Avoid putting persistence or secret-bearing code in client-side modules.
+- Prefer stores only for genuinely shared client state.
+- Keep components small and focused on presentation or local interaction.
+""",
+    "fastapi": """## FastAPI / Python Standards
+
+- Use Pydantic models for request and response validation.
+- Keep route handlers thin.
+- Move business logic into services or domain modules.
+- Use explicit dependency injection for database/session/auth concerns.
+- Return predictable response shapes.
+- Avoid global mutable state.
+- Use type hints throughout.
+- Keep long-running jobs out of request handlers unless explicitly required.
+""",
+    "spring-kotlin": """## Spring Boot / Kotlin Standards
+
+- Keep controllers thin.
+- Put business logic in services or domain components.
+- Keep persistence concerns inside repositories/adapters.
+- Validate request DTOs before use.
+- Use explicit transaction boundaries.
+- Avoid leaking JPA entities directly through API responses.
+- Prefer constructor injection.
+- Keep module boundaries explicit.
+- Write integration tests for externally visible behaviour.
+""",
+    "go": """## Go Standards
+
+- Keep packages small and named by responsibility.
+- Prefer explicit structs and interfaces over clever generic abstractions.
+- Keep HTTP handlers thin.
+- Validate input at the boundary.
+- Return errors with useful context.
+- Avoid package-level mutable state unless unavoidable.
+- Keep persistence behind explicit interfaces where it improves testability.
+""",
+    "elixir-phoenix": """## Elixir / Phoenix Standards
+
+- Keep contexts as the main boundary for business logic.
+- Keep LiveViews focused on interaction flow, not persistence detail.
+- Validate and transform data through changesets.
+- Prefer explicit message handling.
+- Avoid hiding important state transitions.
+- Use Oban or supervised processes for background work only when needed.
+""",
+}
+
+
+# ---------------------------------------------------------------------------
+# Core prompt templates
+# ---------------------------------------------------------------------------
+
+BASE_INSTRUCTIONS = """You are helping create project context files for an AI-assisted coding project.
+
+Use the PRD below as the source of truth.
+
+Rules:
+- Do not invent unnecessary product scope.
+- Make unresolved assumptions explicit.
+- Prefer simple, practical architecture.
+- Write clear Markdown.
+- Output only the requested Markdown file contents.
+- Do not include chatty explanation before or after the Markdown.
+"""
+
+PROMPT_TEMPLATES: dict[str, str] = {
+    "overview": """{base}
+
+Target file: `context/project-overview.md`
+
+Create a concise but detailed project overview that can guide future AI coding sessions.
+
+The overview must:
+- preserve the intent of the PRD
+- clarify the product shape
+- avoid inventing unnecessary scope
+- separate confirmed requirements from assumptions
+- be useful as long-lived project memory
+
+The file must use this structure:
+
+# Project Overview
+
+## Product Summary
+
+Write one clear paragraph explaining:
+- what the product is
+- who it is for
+- what problem it solves
+- the main value proposition
+
+## Target Users
+
+Describe each user type:
+- who they are
+- what they need
+- what success looks like for them
+
+## Problem Being Solved
+
+Explain:
+- the current pain/problem
+- why existing approaches are insufficient
+- what the product improves
+
+## Goals
+
+List specific product goals.
+Each goal should be measurable or observable where possible.
+
+## Non-Goals
+
+List things the project should not try to solve yet.
+
+## Core User Flow
+
+Describe the primary happy path step by step.
+Include entry point, main actions, successful completion, and obvious failure/cancel paths.
+
+## Main Features
+
+Group features by area.
+For each feature include:
+- purpose
+- user value
+- whether it appears core, supporting, or future
+
+## In Scope
+
+List concrete work that belongs in the initial product.
+
+## Out of Scope
+
+List scope boundaries and tempting distractions to avoid.
+
+## Success Criteria
+
+Each criterion must be specific and verifiable.
+
+## Important Assumptions
+
+List assumptions separately from confirmed PRD facts.
+
+## Open Questions
+
+List missing decisions that need user input.
+
+--- PRD START ---
+{prd}
+--- PRD END ---
+""",
+    "architecture": """{base}
+
+Target file: `context/architecture.md`
+
+Create architecture context for this project.
+
+Your job is to define:
+- the major system boundaries
+- responsibilities of each area
+- data ownership
+- request/data flow
+- invariants the codebase must never violate
+- where complexity is allowed vs forbidden
+
+The goal is not to create enterprise architecture.
+The goal is to create a practical, enforceable structure that AI coding agents can safely follow.
+
+If the PRD does not specify a technology choice:
+- leave sensible placeholders
+- explain tradeoffs briefly
+- list unresolved decisions under Open Questions
+- do not pretend the stack is already decided
+
+Preferred stack hint:
+{stack_hint}
+
+Stack-specific guidance:
+{stack_rules}
+
+The file must use this structure:
+
+# Architecture Context
+
+## Architectural Style
+
+Describe:
+- overall architecture style
+- major execution model
+- whether the system is monolith, modular, service-oriented, event-driven, etc.
+- where state lives
+- what the runtime model looks like
+
+## Stack
+
+| Layer | Technology | Responsibility | Why |
+| --- | --- | --- | --- |
+
+Explain why each major technology exists.
+
+## System Boundaries
+
+For every major folder, module, or boundary include:
+- responsibility
+- what is allowed inside
+- what must not live there
+- inbound dependencies allowed
+- outbound dependencies allowed
+- example files/components likely to exist there
+
+Example:
+
+- `app/api/`
+  - owns HTTP request boundaries
+  - validates requests
+  - must not contain business logic
+  - may call services
+  - must not directly query persistence
+
+## Request/Data Flow
+
+Describe:
+- how requests move through the system
+- validation boundaries
+- business logic boundaries
+- persistence boundaries
+- response shaping
+- background work, if any
+
+## Storage Model
+
+For each storage mechanism describe:
+- what lives there
+- ownership rules
+- lifecycle expectations
+- data that must never live there
+
+## Auth and Access Model
+
+Describe:
+- authentication mechanism
+- ownership rules
+- mutation permissions
+- multi-user assumptions
+- trust boundaries
+
+## Core Data Concepts
+
+Describe the major entities/resources in plain English.
+Do not fully design schemas unless the PRD clearly requires it.
+
+For each concept:
+- purpose
+- ownership
+- relationships
+- lifecycle
+
+## External Integrations
+
+Describe:
+- APIs/services used
+- sync vs async behaviour
+- retry expectations
+- failure handling expectations
+
+## Performance Expectations
+
+Describe:
+- expected scale
+- latency sensitivity
+- expensive operations
+- caching assumptions
+- background processing assumptions
+
+## Invariants
+
+These are hard architectural rules the codebase must never violate.
+
+Each invariant must:
+- be enforceable
+- be specific
+- prevent architectural drift
+
+Example:
+- Request handlers must never run long-lived background jobs directly.
+- UI components must not directly mutate persistence.
+
+## Failure Modes
+
+Describe:
+- likely failure scenarios
+- acceptable degradation behaviour
+- what must fail loudly
+- what may retry gracefully
+
+## Open Questions
+
+List unresolved architecture decisions separately.
+
+--- PRD START ---
+{prd}
+--- PRD END ---
+""",
+    "standards": """{base}
+
+Target file: `context/code-standards.md`
+
+Create practical coding standards for this project.
+
+The standards must:
+- guide AI coding agents
+- reduce architectural drift
+- improve consistency
+- prevent overengineering
+- improve maintainability
+
+Avoid vague advice like:
+- "write clean code"
+- "follow best practices"
+
+Every rule should be:
+- actionable
+- enforceable
+- specific
+- useful during implementation
+
+Preferred stack hint:
+{stack_hint}
+
+General standards:
+{general_standards}
+
+Stack-specific standards:
+{stack_rules}
+
+The file must use this structure:
+
+# Code Standards
+
+## Engineering Philosophy
+
+Describe:
+- what kinds of complexity are acceptable
+- what kinds are discouraged
+- how to approach abstractions
+- how to approach refactoring
+- how to approach iteration
+
+## General Rules
+
+Each rule must include:
+- the rule
+- why it exists
+- an example of good behaviour
+- an example of bad behaviour
+
+## Naming Conventions
+
+Describe:
+- component naming
+- module naming
+- service naming
+- API naming
+- file naming
+
+## Boundary Rules
+
+Define:
+- what UI can access
+- what services can access
+- what persistence can access
+- what must never bypass boundaries
+
+## Error Handling Rules
+
+Describe:
+- where validation happens
+- how errors propagate
+- logging expectations
+- retry expectations
+- user-facing vs internal errors
+
+## State Management Rules
+
+Describe:
+- where state belongs
+- what should remain local
+- what may become shared
+- anti-patterns to avoid
+
+## API Rules
+
+Describe:
+- validation expectations
+- response shapes
+- auth expectations
+- idempotency assumptions
+- mutation rules
+
+## Persistence Rules
+
+Describe:
+- what belongs in storage
+- what does not
+- ownership expectations
+- migration expectations
+- anti-patterns
+
+## Testing Expectations
+
+Describe:
+- required test layers
+- what must always be tested
+- what does not need exhaustive testing
+- how tests should be structured
+
+## AI Coding Agent Rules
+
+These are critical.
+
+Describe:
+- how agents should approach implementation
+- how large changes may be
+- when to stop and ask questions
+- what not to refactor
+- how to update progress tracking
+- how to preserve architectural integrity
+
+## Forbidden Patterns
+
+Explicitly list:
+- anti-patterns
+- overengineering traps
+- architectural drift examples
+- code smells this project should avoid
+
+--- PRD START ---
+{prd}
+--- PRD END ---
+""",
+    "ui": """{base}
+
+Target file: `context/ui-context.md`
+
+Create detailed UI design context for this project.
+
+The UI context must be specific enough that an AI coding agent can generate
+consistent screens and components without repeatedly reinventing the visual
+language.
+
+If the PRD does not specify a visual style:
+- propose an appropriate default
+- mark it clearly as an assumption
+- keep it practical for the product type
+
+Optional style hint:
+{style_hint}
+
+The file must use this structure:
+
+# UI Context
+
+## Theme
+
+Describe:
+- overall visual language
+- light/dark mode assumption
+- emotional tone
+- product feel
+- what the UI should avoid looking like
+
+## Design Principles
+
+List practical design rules.
+Each rule should explain how it affects component or screen design.
+
+## Colors
+
+Define CSS custom property tokens.
+All components must use tokens rather than hardcoded colours.
+
+| Role | CSS Variable | Value | Usage |
+| --- | --- | --- | --- |
+
+Include at minimum:
+- page background
+- surface
+- elevated surface
+- primary text
+- muted text
+- primary accent
+- secondary accent
+- border
+- error
+- success
+- warning
+- focus ring
+
+## Typography
+
+| Role | Font | Variable | Usage |
+| --- | --- | --- | --- |
+
+Describe:
+- heading style
+- body text style
+- mono/code style
+- text density expectations
+
+## Spacing and Layout Rhythm
+
+Describe:
+- spacing scale
+- page padding
+- panel/card padding
+- vertical rhythm
+- density expectations
+
+## Border Radius
+
+| Context | Class | Usage |
+| --- | --- | --- |
+
+## Shadows and Borders
+
+Describe:
+- when to use borders
+- when to use shadows
+- how layered surfaces should be shown
+
+## Component Library
+
+Describe:
+- preferred component library, if any
+- where components should live
+- when to create a custom component
+- when to reuse existing primitives
+
+## Layout Patterns
+
+For each major layout pattern include:
+- when it is used
+- structure
+- responsive behaviour
+- examples of screens that use it
+
+## Forms
+
+Describe:
+- label behaviour
+- validation display
+- error message style
+- submit/loading states
+- disabled states
+
+## Tables and Lists
+
+Describe:
+- when to use tables vs cards/lists
+- empty states
+- loading states
+- row actions
+- responsive behaviour
+
+## Navigation
+
+Describe:
+- global navigation
+- local navigation
+- breadcrumbs if needed
+- active states
+
+## Icons
+
+Describe:
+- icon library
+- sizing
+- stroke/fill style
+- when icons should and should not be used
+
+## Interaction States
+
+Describe:
+- hover
+- active
+- focus
+- disabled
+- selected
+- loading
+- destructive actions
+
+## Empty States
+
+Describe:
+- tone
+- content structure
+- call-to-action behaviour
+
+## Error States
+
+Describe:
+- inline errors
+- page-level errors
+- recoverable vs unrecoverable errors
+- destructive confirmation patterns
+
+## Accessibility Rules
+
+Include:
+- keyboard navigation expectations
+- focus visibility
+- contrast expectations
+- ARIA usage
+- reduced motion assumptions
+
+## AI UI Generation Rules
+
+Give direct instructions to AI coding agents:
+- how to choose components
+- how to apply tokens
+- how to avoid visual inconsistency
+- what must not be hardcoded
+- when to ask for clarification
+
+--- PRD START ---
+{prd}
+--- PRD END ---
+""",
+    "tracker": """{base}
+
+Target file: `context/progress-tracker.md`
+
+Create an initial progress tracker for this project.
+
+The tracker should:
+- be practical
+- be easy to update after every meaningful implementation change
+- help resume work in future AI coding sessions
+- separate completed work from planned work
+- capture architecture decisions as they happen
+
+The file must use this structure:
+
+# Progress Tracker
+
+Update this file after every meaningful implementation change.
+
+## Current Phase
+
+Use one of:
+- Not started
+- Context definition
+- Foundation
+- Feature implementation
+- Stabilisation
+- Complete
+
+## Current Goal
+
+State the single current goal in plain English.
+
+## Completed
+
+List completed project/context/implementation work.
+Use "None yet" if empty.
+
+## In Progress
+
+List active work only.
+Use "None yet" if empty.
+
+## Next Up
+
+List the next 3-7 useful units of work.
+Each item should be small enough for a focused AI coding session.
+
+## Open Questions
+
+List unresolved product or technical decisions.
+Each question should explain why it matters.
+
+## Architecture Decisions
+
+Record decisions that affect:
+- system design
+- data model
+- dependencies
+- deployment
+- UI architecture
+- testing strategy
+
+For each decision include:
+- decision
+- reason
+- date if known
+
+## Risks / Watchouts
+
+List things that could cause rework, complexity, instability, or scope creep.
+
+## Session Notes
+
+Write concise notes needed to resume work next time:
+- current state
+- important context
+- files likely to matter
+- what not to touch
+
+--- PRD START ---
+{prd}
+--- PRD END ---
+""",
+    "feature": """{base}
+
+Target file: `context/features/{feature_slug}.md`
+
+Create a detailed implementation-ready feature specification.
+
+The feature should:
+- be small enough for a focused implementation cycle
+- describe behaviour clearly
+- avoid unnecessary architecture
+- avoid speculative future scope
+
+The feature must be implementation-oriented, not marketing-oriented.
+
+Feature name:
+{feature_title}
+
+The file must use this structure:
+
+# Feature: {feature_title}
+
+## Feature Summary
+
+Describe:
+- what the feature does
+- who uses it
+- why it exists
+- how it fits into the overall product
+
+## User Stories
+
+Use:
+- "As a..."
+- "I want..."
+- "So that..."
+
+Stories must describe behaviour, not implementation.
+
+## In Scope
+
+Be explicit and concrete.
+
+## Out of Scope
+
+Explicitly reject nearby scope creep.
+
+## UX Flow
+
+Describe:
+- entry points
+- user actions
+- state transitions
+- success flow
+- cancellation flow
+- failure flow
+
+## UI Requirements
+
+Describe:
+- screens/components involved
+- layout expectations
+- interaction expectations
+- loading states
+- empty states
+- error states
+- accessibility expectations
+
+## Validation Rules
+
+Describe:
+- input validation
+- business rules
+- edge cases
+- rejection behaviour
+
+## Data Requirements
+
+Describe:
+- entities affected
+- relationships
+- ownership
+- persistence expectations
+
+## API / Server Requirements
+
+Describe:
+- endpoints/actions needed
+- request expectations
+- response expectations
+- auth requirements
+- failure handling
+
+## Acceptance Criteria
+
+Each criterion must:
+- be testable
+- describe observable behaviour
+- avoid implementation detail
+
+Good:
+- "A signed-in user can create a project and immediately open it."
+
+Bad:
+- "CreateProjectService stores rows correctly."
+
+## Implementation Notes
+
+Describe:
+- sequencing suggestions
+- likely files/modules affected
+- risks
+- known complexity
+
+## Non-Goals
+
+List:
+- future work intentionally excluded
+- deferred complexity
+- things that must not be implemented in this slice
+
+## Open Questions
+
+List unresolved product or technical questions separately.
+
+--- PRD START ---
+{prd}
+--- PRD END ---
+""",
+}
+
+
+# ---------------------------------------------------------------------------
+# Prompt builders that use existing context
+# ---------------------------------------------------------------------------
+
+IMPLEMENT_NEXT_TEMPLATE = """You are helping implement the next smallest valuable step in an AI-assisted coding project.
+
+Use the project context below as the source of truth.
+
+Your task:
+1. Read the PRD and project context.
+2. Identify the next smallest valuable implementation step.
+3. Implement only that step.
+4. Do not refactor unrelated code.
+5. Do not introduce new architecture unless required.
+6. Follow the architecture, UI, and coding standards.
+7. After implementation, update `context/progress-tracker.md`.
+
+Output expectations:
+- Explain briefly what you changed.
+- List files changed.
+- Include any commands/tests to run.
+- Update the progress tracker.
+
+--- PROJECT CONTEXT START ---
+{compiled_context}
+--- PROJECT CONTEXT END ---
+"""
+
+NEXT_FEATURE_TEMPLATE = """You are helping plan the next feature for an AI-assisted coding project.
+
+Use the PRD and current progress tracker below as the source of truth.
+
+Your task:
+1. Identify the next most useful feature to specify.
+2. Keep it small and implementation-ready.
+3. Do not choose a feature already completed or in progress.
+4. Produce a Markdown feature spec.
+5. Output only the feature file contents.
+
+Use this structure:
+
+# Feature: [Feature Name]
+
+## Purpose
+
+## User Stories
+
+## In Scope
+
+## Out of Scope
+
+## UI Requirements
+
+## Data Requirements
+
+## API / Server Requirements
+
+## Validation Rules
+
+## Error States
+
+## Acceptance Criteria
+
+## Implementation Notes
+
+## Open Questions
+
+--- PROJECT CONTEXT START ---
+{compiled_context}
+--- PROJECT CONTEXT END ---
+"""
+
+SESSION_TEMPLATE = """You are helping continue an AI-assisted coding session.
+
+Use the project context below as the source of truth.
+
+Your job:
+1. Summarise the current state.
+2. Identify the current goal.
+3. Identify the next safest implementation step.
+4. Call out any open questions or risks.
+5. Provide a focused instruction block that can be used to start a coding agent.
+
+Do not invent scope.
+
+--- PROJECT CONTEXT START ---
+{compiled_context}
+--- PROJECT CONTEXT END ---
+"""
+
+
+# ---------------------------------------------------------------------------
+# Git / PR workflow prompt templates
+# ---------------------------------------------------------------------------
+
+SHIP_WORK_TEMPLATE = """Ship the current work.
+
+Branch name: {branch}
+PR title: {title}
+
+Steps:
+1. Confirm all acceptance criteria for the current milestone slice pass. Run the relevant tests/checks before committing.
+2. Inspect the working tree and summarise the files changed.
+3. Stage only files that belong to this slice. Do not include unrelated changes, secrets, temporary files, debug code, or local environment files.
+4. Create one focused commit from the current work. Use imperative mood and match the recent git log style.
+5. Create branch `{branch}` from the current HEAD if it does not already exist. If already on that branch, continue.
+6. Push `{branch}` to origin with upstream set.
+7. Open a PR targeting `main` with title `{title}` and a short body containing:
+   - What changed
+   - How to verify, including commands and manual checks
+   - Link to the milestone, feature spec, or work order if one exists
+{body_section}
+8. Print the PR URL when done.
+
+Rules:
+- Do not merge.
+- Do not checkout `main` after opening the PR.
+- Do not start new feature work.
+- I will review the PR.
+"""
+
+PR_APPROVED_TEMPLATE = """PR #{pr_number} has been reviewed and merged on GitHub.
+
+Steps:
+1. Fetch from origin.
+2. Checkout `main`.
+3. Pull latest `main` so local matches `origin/main`.
+4. Confirm the merge commit, squash commit, or rebased commits for PR #{pr_number} are on `main`.
+5. Delete the local feature branch if it still exists and was merged.
+6. Optionally delete the remote feature branch if it was not auto-deleted by GitHub.
+7. Report:
+   - current branch
+   - latest commit on `main`
+   - whether the merged work is present locally
+   - whether the progress tracker reflects the merged work
+
+Rules:
+- Do not start new feature work unless I say so.
+- Do not modify unrelated files.
+"""
+
+PR_COMMENTS_TEMPLATE = """Read review comments on PR #{pr_number} and make the necessary adjustments.
+
+Steps:
+1. Use `gh` to fetch PR #{pr_number} details, review comments, and inline code comments.
+2. Summarise each actionable item before changing code.
+3. If not already on the feature branch, checkout {branch_instruction}.
+4. Pull latest from origin for that branch.
+5. Fix every actionable comment.
+6. Skip nitpicks I have explicitly resolved, dismissed, or marked as won't fix.
+7. Run the relevant tests/checks and fix regressions.
+8. Commit with a message that references the review, for example: `Address PR #{pr_number} review feedback`.
+9. Push to the same branch.
+10. Reply on GitHub to each addressed thread with a one-line note of what changed, using `gh` if possible.
+11. Print a checklist:
+    - comment
+    - status: done / deferred / needs my input
+    - file or area changed
+
+Rules:
+- Do not merge.
+- Do not checkout `main`.
+- Do not start new feature work.
+- I will re-review.
+"""
+
+WORKFLOW_GUIDE_TEMPLATE = """# Git & PR Workflow — Prompt Templates
+
+This is the post-implementation loop for AI-assisted development.
+
+The project context may already be loaded through Cursor rules, compiled context,
+or explicit files. These prompts do not repeat the full context.
+
+## Working model
+
+1. Develop locally on `main` or your current working branch.
+2. When a slice is complete, generate a ship prompt.
+3. The agent creates one focused commit, creates/pushes a feature branch, and opens a PR.
+4. You review the PR on GitHub.
+5. After review:
+   - if merged, sync local `main`
+   - if comments need changes, address them on the same feature branch
+
+## Workflow diagram
+
+```text
+main / local dev
+  │
+  ▼  x_ctx ship
+feature/M{N}-slug  ──push──▶  PR on GitHub
+  │
+  ▼  you review
+  ├─ merge ──▶  x_ctx pr-approved ──▶  checkout main, pull
+  └─ comments ─▶  x_ctx pr-comments ──▶  fix, push, re-review
+```
+
+## Commands
+
+```bash
+x_ctx ship --branch feature/M0-project-setup --title "M0: project setup"
+x_ctx pr-approved 12
+x_ctx pr-comments 12 --branch feature/M0-project-setup
+```
+
+## Rules baked into the prompts
+
+- Do not merge.
+- Do not include unrelated files.
+- Do not include secrets, debug code, or local environment files.
+- One finished slice equals one focused commit.
+- You review the PR.
+- The agent only syncs back to `main` after the PR is merged.
+"""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AppPaths:
+    root: Path
+    prd: Path
+    context: Path
+    features: Path
+
+
+def get_paths(prd_name: str = DEFAULT_PRD) -> AppPaths:
+    root = Path.cwd()
+    context = root / CONTEXT_DIR
+    return AppPaths(
+        root=root,
+        prd=root / prd_name,
+        context=context,
+        features=context / FEATURES_DIR,
+    )
+
+
+def slugify(value: str) -> str:
+    value = value.strip().lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    value = re.sub(r"-+", "-", value)
+    return value.strip("-") or "feature"
+
+
+def read_file(path: Path, required: bool = True) -> str:
+    if not path.exists():
+        if required:
+            die(f"Missing required file: {path}")
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def write_file_if_missing(path: Path, content: str) -> bool:
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+def die(message: str, code: int = 1) -> None:
+    print(f"Error: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def available_stacks() -> str:
+    return ", ".join(sorted(STACK_DECORATORS.keys()))
+
+
+def get_stack_rules(stack: str | None) -> tuple[str, str]:
+    if not stack:
+        return "None provided.", "No stack-specific rules provided."
+    key = stack.strip().lower()
+    rules = STACK_DECORATORS.get(key)
+    if not rules:
+        die(f"Unknown stack '{stack}'. Available stacks: {available_stacks()}")
+    return key, rules.strip()
+
+
+def copy_to_clipboard(text: str) -> bool:
+    """
+    Try to copy to clipboard using common platform tools.
+    Returns True if successful, False otherwise.
+    """
+    system = platform.system().lower()
+
+    commands: list[list[str]] = []
+
+    if system == "darwin":
+        commands.append(["pbcopy"])
+    elif system == "windows":
+        commands.append(["clip"])
+    else:
+        commands.extend([
+            ["wl-copy"],
+            ["xclip", "-selection", "clipboard"],
+            ["xsel", "--clipboard", "--input"],
+        ])
+
+    for cmd in commands:
+        if shutil.which(cmd[0]) is None:
+            continue
+        try:
+            subprocess.run(
+                cmd,
+                input=text.encode("utf-8"),
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return True
+        except Exception:
+            continue
+
+    return False
+
+
+def output_prompt(
+    prompt: str,
+    *,
+    copy: bool = False,
+    out_file: Path | None = None,
+    preview: bool = True,
+) -> None:
+    prompt = prompt.strip() + "\n"
+
+    if preview:
+        print(prompt)
+
+    if out_file:
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(prompt, encoding="utf-8")
+        print(f"[{APP_NAME}] Wrote prompt: {out_file}", file=sys.stderr)
+
+    if copy:
+        if copy_to_clipboard(prompt):
+            print(f"[{APP_NAME}] Copied prompt to clipboard.", file=sys.stderr)
+        else:
+            print(f"[{APP_NAME}] Clipboard unavailable.", file=sys.stderr)
+
+
+def compile_context(paths: AppPaths) -> str:
+    sections: list[tuple[str, Path]] = [
+        ("PRD", paths.prd),
+        ("Project Overview", paths.context / "project-overview.md"),
+        ("Architecture", paths.context / "architecture.md"),
+        ("Code Standards", paths.context / "code-standards.md"),
+        ("UI Context", paths.context / "ui-context.md"),
+        ("Progress Tracker", paths.context / "progress-tracker.md"),
+    ]
+
+    chunks: list[str] = []
+
+    for title, path in sections:
+        content = read_file(path, required=False).strip()
+        if content:
+            chunks.append(f"# {title}\n\n{content}")
+
+    feature_files = sorted(paths.features.glob("*.md")) if paths.features.exists() else []
+    for feature_file in feature_files:
+        content = read_file(feature_file, required=False).strip()
+        if content:
+            chunks.append(f"# Feature File: {feature_file.name}\n\n{content}")
+
+    if not chunks:
+        die("No context files found. Run `x_ctx init` and add a PRD first.")
+
+    return "\n\n---\n\n".join(chunks)
+
+
+def build_basic_prompt(
+    kind: str,
+    paths: AppPaths,
+    stack: str | None = None,
+    style: str | None = None,
+    feature_name: str | None = None,
+) -> str:
+    prd = read_file(paths.prd)
+    stack_hint, stack_rules = get_stack_rules(stack)
+
+    template = PROMPT_TEMPLATES[kind]
+
+    feature_title = feature_name or ""
+    feature_slug = slugify(feature_title)
+
+    return template.format(
+        base=BASE_INSTRUCTIONS.strip(),
+        prd=prd.strip(),
+        stack_hint=stack_hint,
+        stack_rules=stack_rules,
+        general_standards=GENERAL_STANDARDS.strip(),
+        style_hint=style or "None provided.",
+        feature_title=feature_title,
+        feature_slug=feature_slug,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+def cmd_init(args: argparse.Namespace) -> None:
+    paths = get_paths(args.prd)
+
+    created: list[str] = []
+    paths.context.mkdir(exist_ok=True)
+    paths.features.mkdir(parents=True, exist_ok=True)
+
+    if write_file_if_missing(paths.prd, PRD_TEMPLATE):
+        created.append(str(paths.prd))
+
+    if write_file_if_missing(paths.context / "progress-tracker.md", PROGRESS_TRACKER_TEMPLATE):
+        created.append(str(paths.context / "progress-tracker.md"))
+
+    placeholder = paths.features / ".gitkeep"
+    if write_file_if_missing(placeholder, ""):
+        created.append(str(placeholder))
+
+    agent_files = {
+        "agents": ["AGENTS.md"],
+        "claude": ["CLAUDE.md"],
+        "both": ["AGENTS.md", "CLAUDE.md"],
+        "none": [],
+    }[args.agents]
+    for file_name in agent_files:
+        path = paths.root / file_name
+        if write_file_if_missing(path, AGENT_ENTRYPOINT_TEMPLATE.format(context_dir=CONTEXT_DIR)):
+            created.append(str(path))
+
+    if args.cursor_rule:
+        cursor_rule = paths.root / ".cursor" / "rules" / "project.mdc"
+        if write_file_if_missing(cursor_rule, CURSOR_RULE_TEMPLATE.format(context_dir=CONTEXT_DIR)):
+            created.append(str(cursor_rule))
+
+    print(f"{APP_NAME} initialised.")
+    if created:
+        print("\nCreated:")
+        for item in created:
+            print(f"  - {item}")
+    else:
+        print("\nNothing created; files already exist.")
+
+    print("\nNext:")
+    print(f"  1. Edit {paths.prd.name}")
+    print("  2. Run: x_ctx overview")
+    print("  3. Paste the generated prompt into your AI tool")
+
+
+def cmd_prompt(kind: str) -> Callable[[argparse.Namespace], None]:
+    def run(args: argparse.Namespace) -> None:
+        paths = get_paths(args.prd)
+        prompt = build_basic_prompt(
+            kind=kind,
+            paths=paths,
+            stack=getattr(args, "stack", None),
+            style=getattr(args, "style", None),
+        )
+        output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    return run
+
+
+def cmd_feature(args: argparse.Namespace) -> None:
+    paths = get_paths(args.prd)
+    prompt = build_basic_prompt(
+        kind="feature",
+        paths=paths,
+        feature_name=args.name,
+    )
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+def cmd_compile_context(args: argparse.Namespace) -> None:
+    paths = get_paths(args.prd)
+    compiled = compile_context(paths)
+    output_prompt(compiled, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+def cmd_next_feature(args: argparse.Namespace) -> None:
+    paths = get_paths(args.prd)
+    compiled = compile_context(paths)
+    prompt = NEXT_FEATURE_TEMPLATE.format(compiled_context=compiled.strip())
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+def cmd_implement_next(args: argparse.Namespace) -> None:
+    paths = get_paths(args.prd)
+    compiled = compile_context(paths)
+    prompt = IMPLEMENT_NEXT_TEMPLATE.format(compiled_context=compiled.strip())
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+def cmd_session(args: argparse.Namespace) -> None:
+    paths = get_paths(args.prd)
+    compiled = compile_context(paths)
+    prompt = SESSION_TEMPLATE.format(compiled_context=compiled.strip())
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+def cmd_list_stacks(args: argparse.Namespace) -> None:
+    print("Available stacks:")
+    for stack in sorted(STACK_DECORATORS.keys()):
+        print(f"  - {stack}")
+
+
+def cmd_ship(args: argparse.Namespace) -> None:
+    body_section = ""
+    if args.body:
+        bullets = "\n".join(f"   - {item}" for item in args.body)
+        body_section = f"\n   Additional PR body notes:\n{bullets}"
+
+    prompt = SHIP_WORK_TEMPLATE.format(
+        branch=args.branch,
+        title=args.title,
+        body_section=body_section,
+    )
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+def cmd_pr_approved(args: argparse.Namespace) -> None:
+    prompt = PR_APPROVED_TEMPLATE.format(pr_number=args.pr_number)
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+def cmd_pr_comments(args: argparse.Namespace) -> None:
+    if args.branch:
+        branch_instruction = f"`{args.branch}`"
+    else:
+        branch_instruction = "the PR head branch"
+
+    prompt = PR_COMMENTS_TEMPLATE.format(
+        pr_number=args.pr_number,
+        branch_instruction=branch_instruction,
+    )
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+def cmd_workflow(args: argparse.Namespace) -> None:
+    output_prompt(WORKFLOW_GUIDE_TEMPLATE, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def add_output_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-c", "--copy", action="store_true", help="Copy the generated output to the clipboard.")
+    parser.add_argument("--out", type=Path, help="Write the generated output to this file.")
+    parser.add_argument("--no-preview", action="store_true", help="Do not print generated output.")
+
+
+def add_common_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--prd",
+        default=DEFAULT_PRD,
+        help=f"Path to PRD file relative to current directory. Default: {DEFAULT_PRD}",
+    )
+    add_output_args(parser)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=APP_NAME,
+        description="Generate AI coding prompts from a PRD and context files.",
+    )
+
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    init = sub.add_parser("init", help="Create starter PRD and context folders.")
+    init.add_argument("--prd", default=DEFAULT_PRD)
+    init.add_argument(
+        "--agents",
+        choices=["agents", "claude", "both", "none"],
+        default="none",
+        help="Create an agent entrypoint file that points to the generated context.",
+    )
+    init.add_argument(
+        "--cursor-rule",
+        action="store_true",
+        help="Create .cursor/rules/project.mdc pointing to the generated context.",
+    )
+    init.set_defaults(func=cmd_init)
+
+    for name in ["overview", "tracker"]:
+        p = sub.add_parser(name, help=f"Generate prompt for {name}.")
+        add_common_args(p)
+        p.set_defaults(func=cmd_prompt(name))
+
+    architecture = sub.add_parser("architecture", help="Generate architecture context prompt.")
+    add_common_args(architecture)
+    architecture.add_argument("--stack", help=f"Stack hint. Available: {available_stacks()}")
+    architecture.set_defaults(func=cmd_prompt("architecture"))
+
+    standards = sub.add_parser("standards", help="Generate code standards prompt.")
+    add_common_args(standards)
+    standards.add_argument("--stack", help=f"Stack hint. Available: {available_stacks()}")
+    standards.set_defaults(func=cmd_prompt("standards"))
+
+    ui = sub.add_parser("ui", help="Generate UI context prompt.")
+    add_common_args(ui)
+    ui.add_argument("--style", help='Optional style hint, e.g. "dark technical workspace".')
+    ui.set_defaults(func=cmd_prompt("ui"))
+
+    feature = sub.add_parser("feature", help="Generate prompt for a specific feature.")
+    add_common_args(feature)
+    feature.add_argument("name", help='Feature name, e.g. "authentication".')
+    feature.set_defaults(func=cmd_feature)
+
+    compile_cmd = sub.add_parser("compile-context", help="Print/copy compiled project context.")
+    add_common_args(compile_cmd)
+    compile_cmd.set_defaults(func=cmd_compile_context)
+
+    next_feature = sub.add_parser("next-feature", help="Generate prompt for the next feature spec.")
+    add_common_args(next_feature)
+    next_feature.set_defaults(func=cmd_next_feature)
+
+    implement_next = sub.add_parser("implement-next", help="Generate coding-agent prompt for the next implementation step.")
+    add_common_args(implement_next)
+    implement_next.set_defaults(func=cmd_implement_next)
+
+    session = sub.add_parser("session", help="Generate a session-start prompt.")
+    add_common_args(session)
+    session.set_defaults(func=cmd_session)
+
+    ship = sub.add_parser("ship", help="Generate prompt to commit, branch, push, and open a PR.")
+    ship.add_argument("--branch", required=True, help="Feature branch name, e.g. feature/M0-project-setup.")
+    ship.add_argument("--title", required=True, help="PR title.")
+    ship.add_argument(
+        "--body",
+        action="append",
+        help="Optional extra PR body bullet. Can be supplied multiple times.",
+    )
+    add_output_args(ship)
+    ship.set_defaults(func=cmd_ship)
+
+    pr_approved = sub.add_parser("pr-approved", help="Generate prompt to sync local main after a merged PR.")
+    pr_approved.add_argument("pr_number", help="GitHub PR number.")
+    add_output_args(pr_approved)
+    pr_approved.set_defaults(func=cmd_pr_approved)
+
+    pr_comments = sub.add_parser("pr-comments", help="Generate prompt to address GitHub PR review comments.")
+    pr_comments.add_argument("pr_number", help="GitHub PR number.")
+    pr_comments.add_argument("--branch", help="Feature branch name. Optional; agent can infer PR head branch.")
+    add_output_args(pr_comments)
+    pr_comments.set_defaults(func=cmd_pr_comments)
+
+    workflow = sub.add_parser("workflow", help="Print/copy the Git and PR workflow guide.")
+    add_output_args(workflow)
+    workflow.set_defaults(func=cmd_workflow)
+
+    stacks = sub.add_parser("stacks", help="List available stack decorators.")
+    stacks.set_defaults(func=cmd_list_stacks)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        args.func(args)
+        return 0
+    except KeyboardInterrupt:
+        print("\nCancelled.", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

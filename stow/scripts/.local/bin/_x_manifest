@@ -22,6 +22,7 @@ x_phoenix_enhance|Add Oban/auth/etc to existing Phoenix project
 x_port|Port ops: list, query, kill, monitor (subcommands or menu)
 x_ramdisk|tmpfs/RAM disk: create, list, unmount (subcommands or menu)
 x_spring_init|Quick Spring Boot from start.spring.io (-n NAME or interactive)
+x_stow_links|Restow scripts and verify x_ links in ~/.local/bin
 x_tmux_panic|tmux panic sheet: compare live bindings with defaults and open help popup
 x_ts_lib_create|TypeScript library scaffold (tsup, ESLint, Vitest)
 x_tunnel|SSH tunnel: local/remote port forwarding
@@ -32,11 +33,12 @@ x_yt|YouTube/video downloader (yt-dlp or youtube-dl)
 ## Utilities
 x_archive|Compress dir to tar.gz/zip (gz, bz2, xz, zst)
 x_base64|Base64 encode/decode (stdin or file)
+x_ctx|Generate PRD-driven AI coding context and workflow prompts
 x_extract|Extract archives by extension (tar.gz, zip, 7z, etc.)
 x_json|Pretty-print JSON (jq or python)
 x_md2pdf|Markdown to PDF (--input, --input-type md|url, optional --output / --stylesheet)
 x_password|Generate random password (copies to clipboard if xclip)
-x_prmpt|Generate AI workflow prompts and project context files (-c to copy)
+x_prmpt|Deprecated: use x_ctx for PRD-driven AI coding context prompts
 
 ## Docker
 x_docker_clean|Prune images, containers, volumes (menu or subcommands)

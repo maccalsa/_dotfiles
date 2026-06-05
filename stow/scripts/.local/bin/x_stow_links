@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# x_stow_links - Restow scripts and verify x_ tool links in ~/.local/bin.
+
+set -euo pipefail
+
+DOTFILES_ROOT="${DOTFILES_ROOT:-$HOME/_dotfiles}"
+PACKAGE="scripts"
+SOURCE_BIN="$DOTFILES_ROOT/stow/$PACKAGE/.local/bin"
+TARGET_BIN="$HOME/.local/bin"
+MODE="restow"
+
+usage() {
+    cat <<'EOF'
+Usage: x_stow_links [--check] [--dry-run]
+
+Restow the dotfiles scripts package, then verify every executable x_* tool in
+stow/scripts/.local/bin resolves from ~/.local/bin.
+
+Options:
+  --check     Only verify links; do not run stow
+  --dry-run   Show what stow would do, then verify current links
+  -h, --help  Show this help
+
+Examples:
+  x_stow_links
+  x_stow_links --check
+  x_stow_links --dry-run
+EOF
+}
+
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --check)
+                MODE="check"
+                ;;
+            --dry-run)
+                MODE="dry-run"
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "Unknown option: $1"
+                ;;
+        esac
+        shift
+    done
+}
+
+require_layout() {
+    [[ -d "$DOTFILES_ROOT/stow" ]] || die "Missing stow directory: $DOTFILES_ROOT/stow"
+    [[ -d "$SOURCE_BIN" ]] || die "Missing scripts bin directory: $SOURCE_BIN"
+    mkdir -p "$TARGET_BIN"
+}
+
+require_stow() {
+    command -v stow >/dev/null 2>&1 || die "GNU stow is required. Install stow and retry."
+}
+
+run_stow() {
+    case "$MODE" in
+        check)
+            return
+            ;;
+        dry-run)
+            stow --dir="$DOTFILES_ROOT/stow" --target="$HOME" --restow --simulate --verbose "$PACKAGE"
+            ;;
+        restow)
+            stow --dir="$DOTFILES_ROOT/stow" --target="$HOME" --restow "$PACKAGE"
+            ;;
+    esac
+}
+
+verify_links() {
+    local source
+    local link
+    local failures=0
+    local checked=0
+
+    while IFS= read -r -d '' source; do
+        link="$TARGET_BIN/$(basename "$source")"
+        checked=$((checked + 1))
+
+        if [[ ! -e "$link" ]]; then
+            echo "Missing: $link -> $source" >&2
+            failures=$((failures + 1))
+            continue
+        fi
+
+        if [[ "$(readlink -f "$link")" != "$(readlink -f "$source")" ]]; then
+            echo "Mismatch: $link resolves to $(readlink -f "$link"), expected $source" >&2
+            failures=$((failures + 1))
+        fi
+    done < <(find "$SOURCE_BIN" -maxdepth 1 -type f -name 'x_*' -perm -u+x -print0 | sort -z)
+
+    if [[ "$checked" -eq 0 ]]; then
+        die "No executable x_* tools found in $SOURCE_BIN"
+    fi
+
+    if [[ "$failures" -gt 0 ]]; then
+        die "$failures x_ link(s) missing or mismatched"
+    fi
+
+    echo "Verified $checked x_ link(s) in $TARGET_BIN."
+}
+
+main() {
+    parse_args "$@"
+    require_layout
+    require_stow
+    run_stow
+    verify_links
+}
+
+main "$@"
