@@ -1,47 +1,87 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # x_ssh_config - Add host block to ~/.ssh/config
-# Usage: x_ssh_config [HOST] [HOSTNAME] [USER]
+# Usage: x_ssh_config [HOST] [HOSTNAME] [USER] [PORT] [IDENTITY_FILE] [PROXY_JUMP]
 
 usage() {
     cat <<'EOF'
-Usage: x_ssh_config [HOST] [HOSTNAME] [USER]
+Usage: x_ssh_config [HOST] [HOSTNAME] [USER] [PORT] [IDENTITY_FILE] [PROXY_JUMP]
+       x_ssh_config remove HOST
 
-  Appends a Host block to ~/.ssh/config.
+  Adds or updates a Host block in ~/.ssh/config.
   HOST: alias (e.g. myserver)
   HOSTNAME: actual hostname or IP
   USER: SSH user (default: current user)
 
   Examples:
     x_ssh_config prod prod.example.com
-    x_ssh_config dev 192.168.1.10 deploy
+    x_ssh_config dev 192.168.1.10 deploy 22 ~/.ssh/id_ed25519
+    x_ssh_config remove dev
 EOF
     exit 0
 }
 
+config_path() {
+    echo "$HOME/.ssh/config"
+}
+
+ensure_config() {
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+    [[ -f "$(config_path)" ]] || touch "$(config_path)"
+    chmod 600 "$(config_path)"
+}
+
+cmd_remove() {
+    local host="$1"
+    [[ -z "$host" ]] && { echo "Host required."; exit 1; }
+    ensure_config
+    awk -v target="$host" '
+      $1 == "Host" && $2 == target { skip=1; next }
+      $1 == "Host" { skip=0 }
+      !skip { print }
+    ' "$(config_path)" > "$(config_path).tmp"
+    mv "$(config_path).tmp" "$(config_path)"
+    chmod 600 "$(config_path)"
+    echo "Removed Host $host from ~/.ssh/config if it existed."
+}
+
 cmd_add() {
-    local host="$1" hostname="$2" user="${3:-$USER}"
+    local host="$1" hostname="$2" user="${3:-$USER}" port="${4:-}" identity_file="${5:-}" proxy_jump="${6:-}"
     [[ -z "$host" ]] && read -rp "Host alias: " host
     [[ -z "$host" ]] && { echo "Host required."; exit 1; }
     [[ -z "$hostname" ]] && read -rp "HostName (IP or domain): " hostname
     [[ -z "$hostname" ]] && { echo "HostName required."; exit 1; }
+    [[ -z "$port" ]] && read -rp "Port [22]: " port && port="${port:-22}"
+    [[ -z "$identity_file" ]] && read -rp "IdentityFile [blank to skip]: " identity_file
+    [[ -z "$proxy_jump" ]] && read -rp "ProxyJump [blank to skip]: " proxy_jump
 
-    mkdir -p "$HOME/.ssh"
-    chmod 700 "$HOME/.ssh"
-    [[ -f "$HOME/.ssh/config" ]] || touch "$HOME/.ssh/config"
-    chmod 600 "$HOME/.ssh/config"
+    ensure_config
+    if awk -v target="$host" '$1 == "Host" && $2 == target { found=1 } END { exit !found }' "$(config_path)"; then
+        read -rp "Host $host already exists. Replace it? (y/N): " replace
+        [[ "$replace" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+        cmd_remove "$host" >/dev/null
+    fi
 
-    local block="
+    local block
+    block=$(cat <<EOF
 Host $host
     HostName $hostname
     User $user
-"
-    echo "$block" >> "$HOME/.ssh/config"
+    Port $port
+EOF
+)
+    [[ -n "$identity_file" ]] && block+=$'\n'"    IdentityFile $identity_file"
+    [[ -n "$proxy_jump" ]] && block+=$'\n'"    ProxyJump $proxy_jump"
+    echo "" >> "$(config_path)"
+    echo "$block" >> "$(config_path)"
     echo "Added to ~/.ssh/config:"
     echo "$block"
 }
 
 case "${1:-}" in
     -h|--help) usage ;;
-    *) cmd_add "$1" "$2" "$3" ;;
+    remove) cmd_remove "${2:-}" ;;
+    *) cmd_add "${1:-}" "${2:-}" "${3:-$USER}" "${4:-}" "${5:-}" "${6:-}" ;;
 esac

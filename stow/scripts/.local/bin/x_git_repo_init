@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # x_git_repo_init - Create repo, add remote, push initial branch
 # Usage: x_git_repo_init [DIR] [REMOTE_URL]
@@ -7,7 +8,7 @@ usage() {
     cat <<'EOF'
 Usage: x_git_repo_init [DIR] [REMOTE_URL]
 
-  Creates git repo in DIR (default: current), adds remote, pushes.
+  Creates git repo in DIR (default: current), adds remote, optionally commits and pushes.
   If REMOTE_URL omitted, prompts. Supports GitHub/GitLab URLs.
 
   Examples:
@@ -19,7 +20,7 @@ EOF
 
 cmd_init() {
     local dir="${1:-.}"
-    local remote="$2"
+    local remote="${2:-}"
     [[ ! -d "$dir" ]] && mkdir -p "$dir"
     cd "$dir" || exit 1
 
@@ -34,21 +35,30 @@ cmd_init() {
     [[ -z "$remote" ]] && read -rp "Remote URL (e.g. git@github.com:user/repo.git): " remote
     [[ -z "$remote" ]] && { echo "No remote given."; return 0; }
 
-    git remote remove origin 2>/dev/null
+    if git remote get-url origin >/dev/null 2>&1; then
+        echo "Existing origin: $(git remote get-url origin)"
+        read -rp "Replace origin with $remote? (y/N): " replace_origin
+        [[ "$replace_origin" =~ ^[Yy]$ ]] || { echo "Kept existing origin."; return 0; }
+        git remote remove origin
+    fi
     git remote add origin "$remote"
     git branch -M main 2>/dev/null || git branch -M master
     [[ -f .gitignore ]] || echo -e ".env\nnode_modules/\n__pycache__/\n*.pyc\n.DS_Store" > .gitignore
-    git add -A 2>/dev/null
+    git add -A
     git status --short
     read -rp "Commit and push? (y/n): " confirm
     [[ "$confirm" != [Yy]* ]] && { echo "Skipped push."; return 0; }
     git add -A
-    git commit -m "Initial commit" 2>/dev/null || true
-    git push -u origin main 2>/dev/null || git push -u origin master
+    if ! git diff --cached --quiet; then
+        git commit -m "Initial commit"
+    else
+        echo "No staged changes to commit."
+    fi
+    git push -u origin main || git push -u origin master
     echo "Done."
 }
 
 case "${1:-}" in
     -h|--help) usage ;;
-    *) cmd_init "${1:-.}" "$2" ;;
+    *) cmd_init "${1:-.}" "${2:-}" ;;
 esac

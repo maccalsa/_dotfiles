@@ -124,6 +124,7 @@ Subcommands:
   host-setup   Install KVM/libvirt/SPICE stack on this machine    (host)
   guest-setup  Configure audio, SPICE agent, and optional RDP     (guest)
   resize       Detect and grow root partition after disk expand   (guest)
+  self-test    Validate built-in profiles and OS defaults          (local)
 
   (no subcommand) — interactive menu
 
@@ -261,7 +262,7 @@ parse_args() {
   fi
 
   case "$1" in
-    create|delete|list|connect|host-setup|guest-setup|resize)
+    create|delete|list|connect|host-setup|guest-setup|resize|self-test)
       OPERATION="$1"
       shift
       ;;
@@ -403,6 +404,7 @@ do_create() {
   if $RECREATE; then
     if vm_exists; then
       printf 'Recreating existing VM: %s\n' "$VM_NAME"
+      confirm "Destroy and recreate VM '$VM_NAME', including its storage?"
       virsh --connect "$CONNECT_URI" destroy "$VM_NAME" >/dev/null 2>&1 || true
       virsh --connect "$CONNECT_URI" undefine "$VM_NAME" --remove-all-storage >/dev/null 2>&1 \
         || virsh --connect "$CONNECT_URI" undefine "$VM_NAME" >/dev/null
@@ -476,6 +478,37 @@ Template tip: once installed and cleaned up, shut down and take a snapshot:
   virsh --connect "$CONNECT_URI" snapshot-create-as "$VM_NAME" clean-base
 EOF
   fi
+}
+
+# ---------------------------------------------------------------------------
+# self-test
+# ---------------------------------------------------------------------------
+
+do_self_test() {
+  local profile os
+  for profile in template dev test; do
+    for os in ubuntu ubuntu26 pop; do
+      PROFILE="$profile"
+      OS_TYPE="$os"
+      VM_NAME=""
+      ISO_PATH="/tmp/x_vm_self_test.iso"
+      RAM_MB=""
+      VCPUS=""
+      DISK_GB=""
+      DISK_PATH=""
+      NETWORK=""
+      OS_VARIANT=""
+      apply_defaults
+      validate_number "--ram" "$RAM_MB"
+      validate_number "--vcpus" "$VCPUS"
+      validate_number "--disk-size" "$DISK_GB"
+      [[ -n "$VM_NAME" && -n "$DISK_PATH" && -n "$OS_VARIANT" && -n "$NETWORK" ]] || {
+        err "self-test failed for profile=$profile os=$os"
+        exit 1
+      }
+    done
+  done
+  echo "x_vm self-test passed."
 }
 
 # ---------------------------------------------------------------------------
@@ -832,6 +865,7 @@ main() {
     host-setup)  do_host_setup ;;
     guest-setup) do_guest_setup ;;
     resize)      do_resize ;;
+    self-test)   do_self_test ;;
     "")
       err "No operation selected."
       usage >&2

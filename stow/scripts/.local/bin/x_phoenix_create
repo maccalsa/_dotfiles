@@ -7,7 +7,8 @@ Usage: x_phoenix_create [-n NAME]
 Interactive wizard to create a new Phoenix/Elixir app with optional:
   - Database (PostgreSQL, MySQL, SQLite, or none)
   - LiveView, TailwindCSS, Mailer
-  - Oban, Bodyguard, Req, Waffle, OpenApiSpex
+  - Oban setup
+  - Bodyguard, Req, Waffle, OpenApiSpex dependencies only
   - Authentication (phx.gen.auth)
 
 Options:
@@ -56,7 +57,7 @@ main() {
   # Setup Oban (if selected)
   setup_oban "$project_name" "$extra_deps"
   
-  # Future: Add other component setups here
+  # Future: Add real setup for dependency-only components here.
   # setup_bodyguard "$project_name" "$extra_deps"
   # setup_req "$project_name" "$extra_deps"
   # setup_waffle "$project_name" "$extra_deps"

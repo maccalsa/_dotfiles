@@ -11,6 +11,7 @@ Usage: x_backup [COMMAND] [ARGS]
   ssh [SRC] [DEST]     Tar over SSH. DEST = user@host:/path (creates backup_TIMESTAMP.tar.gz there)
 
   If SRC/DEST omitted, prompts interactively.
+  Set X_BACKUP_EXCLUDES to comma-separated tar exclude patterns.
 
 Run with no args for interactive menu.
 EOF
@@ -19,6 +20,16 @@ EOF
 
 check_deps() {
     command -v tar &>/dev/null || { echo "tar not found."; exit 1; }
+}
+
+tar_excludes() {
+    [[ -n "${X_BACKUP_EXCLUDES:-}" ]] || return 0
+    IFS=',' read -ra excludes <<< "$X_BACKUP_EXCLUDES"
+    for item in "${excludes[@]}"; do
+        item="${item#"${item%%[![:space:]]*}"}"
+        item="${item%"${item##*[![:space:]]}"}"
+        [[ -n "$item" ]] && printf '%s\0%s\0' --exclude "$item"
+    done
 }
 
 cmd_local() {
@@ -30,8 +41,11 @@ cmd_local() {
     mkdir -p "$dest"
     local ts
     ts=$(date +%Y%m%d_%H%M%S)
-    tar -czf "${dest}/backup_${ts}.tar.gz" -C "$src" .
-    echo "Created ${dest}/backup_${ts}.tar.gz"
+    local archive="${dest}/backup_${ts}.tar.gz"
+    mapfile -d '' -t excludes < <(tar_excludes)
+    tar -czf "$archive" "${excludes[@]}" -C "$src" .
+    tar -tzf "$archive" >/dev/null
+    echo "Created and verified $archive"
 }
 
 cmd_ssh() {
@@ -50,7 +64,8 @@ cmd_ssh() {
         echo "DEST must be user@host:/path"
         exit 1
     fi
-    tar -czf - -C "$src" . | ssh "$host_part" "cat > '${remote_path}/backup_${ts}.tar.gz'"
+    mapfile -d '' -t excludes < <(tar_excludes)
+    tar -czf - "${excludes[@]}" -C "$src" . | ssh "$host_part" "mkdir -p '$remote_path' && cat > '$remote_path/backup_${ts}.tar.gz' && tar -tzf '$remote_path/backup_${ts}.tar.gz' >/dev/null"
     echo "Created ${dest}/backup_${ts}.tar.gz"
 }
 

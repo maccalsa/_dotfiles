@@ -4,8 +4,9 @@
   cat <<'EOF'
 Usage: x_phoenix_enhance
 
-Add components to an existing Phoenix project: Oban, Bodyguard, Req,
-Waffle, OpenApiSpex, Authentication. Skips already-installed components.
+Add components to an existing Phoenix project. Oban and Authentication are
+configured; Bodyguard, Req, Waffle, and OpenApiSpex are dependency-only.
+Skips already-installed components.
 
 Run from your Phoenix project root (where mix.exs lives).
 EOF
@@ -139,7 +140,7 @@ enhance_phoenix_project() {
   # Setup Oban (if selected)
   setup_oban "$project_name" "$extra_deps"
   
-  # Future: Add other component setups here
+  # Future: Add real setup for dependency-only components here.
   # setup_bodyguard "$project_name" "$extra_deps"
   # setup_req "$project_name" "$extra_deps"
   # setup_waffle "$project_name" "$extra_deps"
@@ -176,7 +177,7 @@ enhance_phoenix_project() {
   echo "   2. mix phx.server"
   echo "   3. Visit http://localhost:4000"
   echo ""
-  echo "📖 See startup.md for detailed setup instructions for each component."
+  echo "📖 Review mix.exs and add project-specific setup for dependency-only components."
 }
 
 # Main execution

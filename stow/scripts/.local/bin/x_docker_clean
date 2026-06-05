@@ -1,11 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # x_docker_clean - Prune Docker images, containers, volumes
-# Usage: x_docker_clean [all|images|containers|volumes]   or menu
+# Usage: x_docker_clean [--dry-run] [-f|--force] [all|images|containers|volumes|networks]
+
+DRY_RUN=false
+FORCE=false
 
 usage() {
     cat <<'EOF'
-Usage: x_docker_clean [COMMAND]
+Usage: x_docker_clean [OPTIONS] [COMMAND]
 
   all         Prune everything (containers, images, volumes, networks)
   images      Remove dangling images
@@ -13,7 +17,12 @@ Usage: x_docker_clean [COMMAND]
   volumes     Remove unused volumes
   networks    Remove unused networks
 
-  With -f/--force, skip confirmation. Default: prompt before prune.
+Options:
+  --dry-run    Show Docker disk usage and the prune command, but do not delete
+  -f, --force  Skip confirmation
+  -h, --help   Show this help
+
+Run with no command for an interactive menu.
 EOF
     exit 0
 }
@@ -24,42 +33,64 @@ check_docker() {
 
 do_prune() {
     local what="$1"
-    local force="$2"
-    if [[ "$force" != "-f" && "$force" != "--force" ]]; then
+    local cmd=()
+
+    case "$what" in
+        all)        cmd=(docker system prune -a --volumes) ;;
+        images)     cmd=(docker image prune -a) ;;
+        containers) cmd=(docker container prune) ;;
+        volumes)    cmd=(docker volume prune) ;;
+        networks)   cmd=(docker network prune) ;;
+        *)          echo "Unknown: $what"; usage ;;
+    esac
+
+    if $DRY_RUN; then
+        echo "Docker disk usage:"
+        docker system df || true
+        echo
+        printf 'Would run:'
+        printf ' %q' "${cmd[@]}"
+        echo
+        return 0
+    fi
+
+    if ! $FORCE; then
         read -rp "Prune $what? (y/n): " confirm
         [[ "$confirm" != [Yy]* ]] && { echo "Aborted."; exit 0; }
     fi
-    case "$what" in
-        all)        docker system prune -a ;;
-        images)     docker image prune -a ;;
-        containers) docker container prune ;;
-        volumes)    docker volume prune ;;
-        networks)   docker network prune ;;
-        *)          echo "Unknown: $what"; usage ;;
-    esac
+
+    "${cmd[@]}"
     echo "Done."
 }
 
 check_docker
-case "${1:-}" in
-    -h|--help) usage ;;
-    -f|--force) do_prune "${2:-all}" "$1" ;;
-    all|images|containers|volumes|networks) do_prune "$1" "$2" ;;
-    menu|"")
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run) DRY_RUN=true; shift ;;
+        -f|--force) FORCE=true; shift ;;
+        -h|--help) usage ;;
+        all|images|containers|volumes|networks|menu) break ;;
+        *) echo "Unknown: $1"; usage ;;
+    esac
+done
+
+case "${1:-menu}" in
+    all|images|containers|volumes|networks) do_prune "$1" ;;
+    menu)
         echo "1) Prune stopped containers"
-        echo "2) Prune dangling images"
-        echo "3) Prune all images"
-        echo "4) Prune unused volumes"
-        echo "5) Prune everything (system prune -a)"
+        echo "2) Prune all unused images"
+        echo "3) Prune unused volumes"
+        echo "4) Prune unused networks"
+        echo "5) Prune everything, including volumes"
         read -rp "Choice: " c
         case "$c" in
             1) do_prune containers ;;
-            2) docker image prune ;;
-            3) do_prune images ;;
-            4) do_prune volumes ;;
+            2) do_prune images ;;
+            3) do_prune volumes ;;
+            4) do_prune networks ;;
             5) do_prune all ;;
             *) echo "Invalid."; exit 1 ;;
         esac
         ;;
-    *) echo "Unknown: $1"; usage ;;
 esac

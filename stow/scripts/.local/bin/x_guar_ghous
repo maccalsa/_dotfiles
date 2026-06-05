@@ -10,23 +10,32 @@ RED="\033[0;31m"
 BLUE="\033[0;34m"
 BOLD="\033[1m"
 RESET="\033[0m"
+DRY_RUN=false
 
 usage() {
     cat <<'EOF'
-Usage: x_guar_ghous
+Usage: x_guar_ghous [--dry-run]
 
   Ultimate disk space cleanup. Confirms each step before running.
-  Cleans: Nix, Docker, /tmp, Maven, Gradle, Go, Python, npm, Cargo,
+  Cleans: Nix, Docker, old /tmp entries, Maven, Gradle, Go, Python, npm, Cargo,
           apt, old kernels, Snap, journalctl, node_modules (interactive).
+
+Options:
+  --dry-run, -n  Print cleanup candidates and disk usage without deleting
+  -h, --help    Show this help
 
   Run with no args for interactive cleanup.
 EOF
     exit 0
 }
 
-case "${1:-}" in
-    -h|--help) usage ;;
-esac
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run|-n) DRY_RUN=true; shift ;;
+        -h|--help) usage ;;
+        *) echo "Unknown option: $1" >&2; usage ;;
+    esac
+done
 
 echo -e "${BLUE}"
 cat << "EOF"
@@ -59,6 +68,31 @@ humanize_kb() {
 read -r BEFORE_USED BEFORE_AVAIL <<< "$(get_disk_stats)"
 BEFORE_USED=${BEFORE_USED:-0}
 BEFORE_AVAIL=${BEFORE_AVAIL:-0}
+
+if $DRY_RUN; then
+    echo "Cleanup report only. Nothing will be deleted."
+    echo
+    echo "Disk space for $HOME:"
+    df -h "$HOME" || true
+    echo
+    echo "Available cleanup areas:"
+    command -v nix-env >/dev/null 2>&1 && echo "  - Nix old generations and garbage collection"
+    command -v docker >/dev/null 2>&1 && echo "  - Docker prune via x_docker_clean/docker"
+    echo "  - /tmp entries older than 1 day"
+    [[ -d "$HOME/.m2/repository" ]] && echo "  - Maven artifacts older than 30 days"
+    [[ -d "$HOME/.gradle/caches/modules-2" ]] && echo "  - Gradle module cache"
+    command -v go >/dev/null 2>&1 && echo "  - Go module cache"
+    command -v python3 >/dev/null 2>&1 && echo "  - Python pip cache"
+    command -v npm >/dev/null 2>&1 && echo "  - npm cache"
+    command -v pnpm >/dev/null 2>&1 && echo "  - pnpm store prune"
+    command -v yarn >/dev/null 2>&1 && echo "  - yarn cache"
+    command -v cargo >/dev/null 2>&1 && [[ -d "$HOME/.cargo/registry" ]] && echo "  - Cargo registry cache"
+    command -v apt-get >/dev/null 2>&1 && echo "  - apt clean/autoclean/autoremove"
+    command -v snap >/dev/null 2>&1 && echo "  - disabled Snap revisions"
+    command -v journalctl >/dev/null 2>&1 && echo "  - journal logs older than 3 days"
+    echo "  - interactive node_modules sweep"
+    exit 0
+fi
 
 confirm() {
     while true; do
@@ -98,7 +132,11 @@ fi
 if command -v docker &>/dev/null; then
     if confirm "Docker (remove stopped containers, dangling images, volumes)"; then
         log "Cleaning up Docker..."
-        docker system prune -af
+        if command -v x_docker_clean >/dev/null 2>&1; then
+            x_docker_clean --force all
+        else
+            docker system prune -af --volumes
+        fi
         log "Docker cleanup complete."
     else
         warn "Skipping Docker cleanup."
@@ -106,9 +144,9 @@ if command -v docker &>/dev/null; then
 fi
 
 ### /tmp
-if confirm "/tmp (delete all temporary files)"; then
-    log "Cleaning /tmp..."
-    if sudo rm -rf /tmp/* 2>/dev/null; then
+if confirm "/tmp (delete top-level entries older than 1 day)"; then
+    log "Cleaning old /tmp entries..."
+    if sudo find /tmp -mindepth 1 -maxdepth 1 -mtime +1 -exec rm -rf -- {} + 2>/dev/null; then
         log "/tmp cleanup complete."
     else
         warn "Some files in /tmp could not be deleted. Check permissions or running processes."

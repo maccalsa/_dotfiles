@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # x_cert_check - Check SSL cert expiry and SANs for a domain
 # Usage: x_cert_check DOMAIN [PORT]
@@ -9,6 +10,7 @@ Usage: x_cert_check DOMAIN [PORT]
 
   Checks SSL cert for DOMAIN. PORT defaults to 443.
   Shows expiry date and Subject Alternative Names.
+  Exits non-zero if the cert is expired or expires within 14 days.
 EOF
     exit 0
 }
@@ -21,13 +23,32 @@ cmd_check() {
 
     echo "Checking $domain:$port"
     echo "---"
-    echo | openssl s_client -servername "$domain" -connect "${domain}:${port}" 2>/dev/null \
-        | openssl x509 -noout -dates -subject -ext subjectAltName 2>/dev/null \
-        || echo "Connection failed. Check domain and port."
+    local cert
+    if ! cert=$(echo | openssl s_client -servername "$domain" -connect "${domain}:${port}" 2>/dev/null); then
+        echo "Connection failed. Check domain and port." >&2
+        exit 2
+    fi
+
+    local end_date end_epoch now_epoch days_left
+    end_date=$(openssl x509 -noout -enddate <<< "$cert" | cut -d= -f2-)
+    end_epoch=$(date -d "$end_date" +%s 2>/dev/null || date -j -f "%b %e %T %Y %Z" "$end_date" +%s)
+    now_epoch=$(date +%s)
+    days_left=$(( (end_epoch - now_epoch) / 86400 ))
+
+    openssl x509 -noout -dates -subject -ext subjectAltName <<< "$cert"
+    echo "days_left=$days_left"
+
+    if [[ "$days_left" -lt 0 ]]; then
+        echo "Certificate is expired." >&2
+        exit 3
+    elif [[ "$days_left" -lt 14 ]]; then
+        echo "Certificate expires soon." >&2
+        exit 4
+    fi
 }
 
 case "${1:-}" in
     -h|--help) usage ;;
     "") echo "Domain required."; usage ;;
-    *) cmd_check "$1" "$2" ;;
+    *) cmd_check "$1" "${2:-443}" ;;
 esac

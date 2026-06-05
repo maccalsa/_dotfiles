@@ -15,24 +15,24 @@ x_install|Add ~/.local/bin to PATH in shell config
 x_mkdocs_init|MkDocs + GitHub Pages setup (interactive or -r/-o flags)
 x_publish_docs|Build static docs (sitemap, llms.txt, robots) and publish to GitHub Pages
 x_monokit|TypeScript monorepo CLI (init, add lib/app, switch deps)
-x_monokit_menu|Interactive menu for x_monokit (options 5-7 need monokit-files)
-x_nextjs_bootstrap|Next.js + Prisma + Shadcn + tRPC + Inngest (-n NAME or interactive)
+x_monokit_menu|Deprecated: broken/stubbed wrapper; use x_monokit directly
+x_nextjs_bootstrap|Deprecated: brittle broad app generator; prefer smaller maintained presets
 x_phoenix_create|Create Phoenix app (-n NAME or interactive)
 x_phoenix_enhance|Add Oban/auth/etc to existing Phoenix project
 x_port|Port ops: list, query, kill, monitor (subcommands or menu)
 x_ramdisk|tmpfs/RAM disk: create, list, unmount (subcommands or menu)
-x_spring_init|Quick Spring Boot from start.spring.io (-n NAME or interactive)
+x_spring_init|Deprecated: use x_gradle_bootstrap for JVM/Spring projects
 x_stow_links|Restow scripts and verify x_ links in ~/.local/bin
 x_tmux_panic|tmux panic sheet: compare live bindings with defaults and open help popup
 x_ts_lib_create|TypeScript library scaffold (tsup, ESLint, Vitest)
 x_tunnel|SSH tunnel: local/remote port forwarding
 x_vm|KVM/libvirt VM manager: create, delete, list, host-setup, guest-setup, resize
-x_vm_pop_test|Create/delete Pop!_OS libvirt VM for testing dotfiles installs
+x_vm_pop_test|Deprecated: fold Pop test defaults into x_vm profiles
 x_yt|YouTube/video downloader (yt-dlp or youtube-dl)
 
 ## Utilities
 x_archive|Compress dir to tar.gz/zip (gz, bz2, xz, zst)
-x_base64|Base64 encode/decode (stdin or file)
+x_base64|Deprecated: use coreutils base64 directly
 x_ctx|Generate PRD-driven AI coding context and workflow prompts
 x_extract|Extract archives by extension (tar.gz, zip, 7z, etc.)
 x_json|Pretty-print JSON (jq or python)
@@ -43,13 +43,13 @@ x_prmpt|Deprecated: use x_ctx for PRD-driven AI coding context prompts
 ## Docker
 x_docker_clean|Prune images, containers, volumes (menu or subcommands)
 x_docker_compose|Scaffold docker-compose (app + postgres + redis)
-x_docker_run|Interactive docker run with common flags
+x_docker_run|Deprecated: use docker run or x_docker_compose
 
 ## Git
 x_git_amend_date|Amend commit dates (interactive or -d for non-interactive)
 x_git_clean|Delete merged branches, prune remotes
 x_git_repo_init|Create repo, add remote, push initial
-x_git_submodule|Init, update, add submodules
+x_git_submodule|Deprecated: use git submodule directly
 x_git_worktree|Add/list/remove git worktrees
 
 ## SSH

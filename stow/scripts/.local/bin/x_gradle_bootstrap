@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-[[ "$1" == "-h" || "$1" == "--help" ]] && {
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && {
   cat <<'EOF'
 Usage: x_gradle_bootstrap [-n NAME]
 
@@ -14,6 +14,8 @@ Interactive wizard for Gradle/Spring Boot projects:
   - Spring app, library, or multi-module
   - Java 21, Kotlin 2.0.0
   - Comprehensive starter selection
+
+This is the canonical JVM/Spring bootstrap tool. x_spring_init is deprecated.
 
 Options:
   -n, --name NAME   Project/library/root name (skip prompt)

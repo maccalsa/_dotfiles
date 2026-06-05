@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # x_archive - Compress directory to tar.gz or zip
-# Usage: x_archive [DIR] [FORMAT]   or interactive
+# Usage: x_archive [DIR] [FORMAT]
 
 usage() {
     cat <<'EOF'
@@ -9,6 +9,7 @@ Usage: x_archive [DIR] [FORMAT]
 
   Compresses DIR (default: current dir) to archive.
   FORMAT: gz (default), bz2, xz, zst, zip
+  Set X_ARCHIVE_EXCLUDES to comma-separated paths/patterns to exclude.
 
   Examples:
     x_archive                    # current dir -> ./$(basename $PWD).tar.gz
@@ -22,16 +23,32 @@ archive_dir() {
     local dir="${1:-.}"
     local fmt="${2:-gz}"
     [[ ! -d "$dir" ]] && { echo "Not a directory: $dir"; exit 1; }
+    case "$fmt" in
+        zst) command -v zstd >/dev/null 2>&1 || { echo "zstd required for zst archives."; exit 1; } ;;
+        zip) command -v zip >/dev/null 2>&1 || { echo "zip required for zip archives."; exit 1; } ;;
+    esac
     dir="$(cd "$dir" && pwd)"
     local name="$(basename "$dir")"
     local out="$(dirname "$dir")/$name"
+    local tar_excludes=()
+    local zip_excludes=()
+    if [[ -n "${X_ARCHIVE_EXCLUDES:-}" ]]; then
+        IFS=',' read -ra excludes <<< "$X_ARCHIVE_EXCLUDES"
+        for item in "${excludes[@]}"; do
+            item="${item#"${item%%[![:space:]]*}"}"
+            item="${item%"${item##*[![:space:]]}"}"
+            [[ -n "$item" ]] || continue
+            tar_excludes+=(--exclude "$item")
+            zip_excludes+=(-x "$item")
+        done
+    fi
 
     case "$fmt" in
-        gz)   tar czf "${out}.tar.gz" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.gz" ;;
-        bz2)  tar cjf "${out}.tar.bz2" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.bz2" ;;
-        xz)   tar cJf "${out}.tar.xz" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.xz" ;;
-        zst)  tar cf - -C "$(dirname "$dir")" "$name" | zstd -o "${out}.tar.zst" && echo "Created ${out}.tar.zst" ;;
-        zip)  (cd "$(dirname "$dir")" && zip -r "${out}.zip" "$name") && echo "Created ${out}.zip" ;;
+        gz)   [[ ! -e "${out}.tar.gz" ]] || { echo "Refusing to overwrite ${out}.tar.gz"; exit 1; }; tar czf "${out}.tar.gz" "${tar_excludes[@]}" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.gz" ;;
+        bz2)  [[ ! -e "${out}.tar.bz2" ]] || { echo "Refusing to overwrite ${out}.tar.bz2"; exit 1; }; tar cjf "${out}.tar.bz2" "${tar_excludes[@]}" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.bz2" ;;
+        xz)   [[ ! -e "${out}.tar.xz" ]] || { echo "Refusing to overwrite ${out}.tar.xz"; exit 1; }; tar cJf "${out}.tar.xz" "${tar_excludes[@]}" -C "$(dirname "$dir")" "$name" && echo "Created ${out}.tar.xz" ;;
+        zst)  [[ ! -e "${out}.tar.zst" ]] || { echo "Refusing to overwrite ${out}.tar.zst"; exit 1; }; tar cf - "${tar_excludes[@]}" -C "$(dirname "$dir")" "$name" | zstd -o "${out}.tar.zst" && echo "Created ${out}.tar.zst" ;;
+        zip)  [[ ! -e "${out}.zip" ]] || { echo "Refusing to overwrite ${out}.zip"; exit 1; }; (cd "$(dirname "$dir")" && zip -r "${out}.zip" "$name" "${zip_excludes[@]}") && echo "Created ${out}.zip" ;;
         *)    echo "Unknown format: $fmt (use gz, bz2, xz, zst, zip)"; exit 1 ;;
     esac
 }

@@ -184,7 +184,13 @@ if branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null); then
 fi
 
 # -------- Create GitHub Actions workflow --------
-say "Creating/overwriting ${WORKFLOW_FILE}"
+WRITE_WORKFLOW="y"
+if [[ -f "${WORKFLOW_FILE}" ]]; then
+  yesno WRITE_WORKFLOW "${WORKFLOW_FILE} exists. Overwrite it?" "n"
+fi
+
+if [[ "${WRITE_WORKFLOW}" == "y" ]]; then
+say "Writing ${WORKFLOW_FILE}"
 cat > "${WORKFLOW_FILE}" <<EOF
 name: Deploy docs
 
@@ -224,6 +230,9 @@ jobs:
         working-directory: "${DOCS_ROOT}"
         run: mkdocs gh-deploy --force
 EOF
+else
+  say "Leaving existing ${WORKFLOW_FILE} unchanged."
+fi
 
 # -------- Helpful output --------
 say ""

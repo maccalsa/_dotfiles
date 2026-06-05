@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # x_port - Port operations: list, query, kill, monitor
 # Usage: x_port [list|query|kill|monitor] [PORT] [-u USER]
@@ -21,6 +22,14 @@ EOF
 
 check_deps() {
     command -v ss &>/dev/null || { echo "ss not found. Install iproute2."; exit 1; }
+}
+
+validate_port() {
+    local port="$1"
+    [[ "$port" =~ ^[0-9]+$ && "$port" -ge 1 && "$port" -le 65535 ]] || {
+        echo "Invalid port: $port" >&2
+        exit 1
+    }
 }
 
 get_user() {
@@ -49,28 +58,42 @@ cmd_query() {
     local port="$1" user
     user=$(get_user "$2")
     [[ -z "$port" ]] && { read -rp "Port: " port; [[ -z "$port" ]] && exit 1; }
+    validate_port "$port"
     check_deps
-    echo "Port $port:"
-    ss -ltnp 2>/dev/null | grep -E ":$port[[:space:]]" || ss -ltnp 2>/dev/null | grep ":$port"
+    echo "Port $port for $user:"
+    local pids pattern
+    pids=$(ps -u "$user" -o pid= 2>/dev/null | tr '\n' ' ')
+    [[ -n "$pids" ]] || { echo "(none)"; return 0; }
+    pattern=$(echo "$pids" | tr ' ' '\n' | awk 'NF{printf "pid=%s|", $1}' | sed 's/|$//')
+    ss -ltnp 2>/dev/null | grep -E ":$port[[:space:]]" | grep -E "$pattern" || echo "(none)"
 }
 
 cmd_kill() {
     local port="$1" user pid
     user=$(get_user "$2")
     [[ -z "$port" ]] && { read -rp "Port to kill: " port; [[ -z "$port" ]] && exit 1; }
+    validate_port "$port"
     check_deps
-    pid=$(ss -ltnp 2>/dev/null | grep -E ":$port[[:space:]]" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)
+    local pids pattern line
+    pids=$(ps -u "$user" -o pid= 2>/dev/null | tr '\n' ' ')
+    [[ -n "$pids" ]] || { echo "No processes for $user"; exit 1; }
+    pattern=$(echo "$pids" | tr ' ' '\n' | awk 'NF{printf "pid=%s|", $1}' | sed 's/|$//')
+    line=$(ss -ltnp 2>/dev/null | grep -E ":$port[[:space:]]" | grep -E "$pattern" | head -1 || true)
+    pid=$(sed -n 's/.*pid=\([0-9]*\).*/\1/p' <<< "$line" | head -1)
     if [[ -z "$pid" ]]; then
-        echo "No process on port $port"
+        echo "No process on port $port for $user"
         exit 1
     fi
-    echo "Killing PID $pid on port $port"
+    echo "$line"
+    read -rp "Send SIGTERM to PID $pid on port $port? (y/N): " confirm
+    [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
     kill "$pid"
 }
 
 cmd_monitor() {
     local port="$1"
     [[ -z "$port" ]] && { read -rp "Port to monitor: " port; [[ -z "$port" ]] && exit 1; }
+    validate_port "$port"
     command -v tcpdump &>/dev/null || { echo "tcpdump not found."; exit 1; }
     echo "Monitoring port $port (Ctrl+C to stop)"
     sudo tcpdump -i any port "$port"

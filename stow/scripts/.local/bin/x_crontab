@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # x_crontab - Crontab manager (list, add, delete)
 # Usage: x_crontab [list|add|delete]   or run with no args for interactive menu
@@ -11,11 +12,31 @@ Usage: x_crontab [COMMAND] [ARGS]
   add [ENTRY]        Add entry. If ENTRY omitted, prompt interactively.
                      Example: x_crontab add "0 9 * * * /path/to/script"
   delete [ENTRY]     Delete matching entry. If omitted, prompt interactively.
+  backup            Save current crontab to ~/.local/state/x_crontab/backups
   menu              Interactive menu (default when no args)
 
 Run with no args for interactive menu.
 EOF
     exit 0
+}
+
+backup_crontab() {
+    local backup_dir="$HOME/.local/state/x_crontab/backups"
+    local backup_file="$backup_dir/crontab_$(date +%Y%m%d_%H%M%S).bak"
+    mkdir -p "$backup_dir"
+    if crontab -l > "$backup_file" 2>/dev/null; then
+        echo "Backed up current crontab: $backup_file" >&2
+    else
+        : > "$backup_file"
+        echo "No current crontab; wrote empty backup: $backup_file" >&2
+    fi
+}
+
+validate_entry() {
+    local entry="$1"
+    local fields
+    fields=$(awk '{print NF}' <<< "$entry")
+    [[ "$fields" -ge 6 ]] || { echo "Entry must contain a schedule and command."; exit 1; }
 }
 
 cmd_list() {
@@ -30,22 +51,42 @@ cmd_add() {
         read -rp "Entry: " entry
         [[ -z "$entry" ]] && { echo "Aborted."; exit 1; }
     fi
-    (crontab -l 2>/dev/null; echo "$entry") | crontab -
+    validate_entry "$entry"
+    if crontab -l 2>/dev/null | grep -Fx -- "$entry" >/dev/null; then
+        echo "Entry already exists; nothing changed."
+        return 0
+    fi
+    backup_crontab
+    (crontab -l 2>/dev/null || true; echo "$entry") | crontab -
     echo "Added."
 }
 
 cmd_delete() {
     local entry="$1"
+    local current
+    current="$(crontab -l 2>/dev/null || true)"
+    [[ -n "$current" ]] || { echo "(no crontab)"; exit 1; }
+
     if [[ -z "$entry" ]]; then
         echo "Current crontab entries:"
-        crontab -l 2>/dev/null || { echo "(no crontab)"; exit 1; }
+        nl -w2 -s') ' <<< "$current"
         echo ""
-        read -rp "Entry to delete (exact match): " entry
+        read -rp "Line number to delete: " line_number
+        [[ "$line_number" =~ ^[0-9]+$ ]] || { echo "Invalid line number."; exit 1; }
+        entry="$(sed -n "${line_number}p" <<< "$current")"
         [[ -z "$entry" ]] && { echo "Aborted."; exit 1; }
+        echo "Selected: $entry"
         read -rp "Delete this entry? (y/n): " confirm
         [[ "$confirm" != [Yy]* ]] && { echo "Aborted."; exit 0; }
     fi
-    crontab -l 2>/dev/null | grep -vFx -- "$entry" | crontab -
+
+    if ! grep -Fx -- "$entry" <<< "$current" >/dev/null; then
+        echo "Entry not found; nothing changed."
+        return 0
+    fi
+
+    backup_crontab
+    grep -vFx -- "$entry" <<< "$current" | crontab -
     echo "Deleted."
 }
 
@@ -55,13 +96,15 @@ run_menu() {
         echo "1) List entries"
         echo "2) Add entry"
         echo "3) Delete entry"
-        echo "4) Exit"
+        echo "4) Backup crontab"
+        echo "5) Exit"
         read -rp "Choice: " choice
         case "$choice" in
             1) cmd_list ;;
             2) cmd_add ;;
             3) cmd_delete ;;
-            4) exit 0 ;;
+            4) backup_crontab ;;
+            5) exit 0 ;;
             *) echo "Invalid." ;;
         esac
     done
@@ -70,8 +113,9 @@ run_menu() {
 case "${1:-}" in
     -h|--help) usage ;;
     list)      cmd_list ;;
-    add)       cmd_add "$2" ;;
-    delete)    cmd_delete "$2" ;;
+    add)       cmd_add "${2:-}" ;;
+    delete)    cmd_delete "${2:-}" ;;
+    backup)    backup_crontab ;;
     menu|"")  cmd_list; run_menu ;;
     *)         echo "Unknown: $1"; usage ;;
 esac

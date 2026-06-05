@@ -92,6 +92,18 @@ log "Mode: $( $DRY_RUN && echo 'DRY RUN' || echo 'LIVE' )"
 log "Action: $( $ARCHIVE_INSTEAD && echo 'ARCHIVE' || echo 'DELETE' )"
 log "Sleep seconds between destructive ops: $SLEEP_SECONDS"
 
+if ! $DRY_RUN; then
+  expected="$([[ "$ARCHIVE_INSTEAD" == true ]] && echo ARCHIVE || echo DELETE)"
+  echo
+  echo "LIVE MODE will $([[ "$ARCHIVE_INSTEAD" == true ]] && echo archive || echo delete) repositories after mirror+tar backup."
+  echo "Type ${expected} to continue:"
+  read -r live_confirm
+  if [[ "$live_confirm" != "$expected" ]]; then
+    err "Live mode confirmation failed; aborting before any destructive action."
+    exit 1
+  fi
+fi
+
 # ========= Process =========
 i=0
 while IFS= read -r full_name; do
@@ -136,6 +148,12 @@ while IFS= read -r full_name; do
   fi
   cksum=$(checksum_file "$tar_path")
   log "TAR checksum (sha256): $cksum"
+  if tar -tzf "$tar_path" >/dev/null 2>&1; then
+    log "TAR integrity check passed: $tar_path"
+  else
+    err "TAR integrity check failed for $repo; skipping destructive action"
+    continue
+  fi
 
 
   # Destructive action

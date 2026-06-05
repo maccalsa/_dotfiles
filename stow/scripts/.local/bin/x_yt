@@ -1,129 +1,91 @@
-import os
-import subprocess
-import sys
-import shutil
+#!/usr/bin/env bash
+# x_yt - Download video/audio with yt-dlp.
 
-if len(sys.argv) > 1 and sys.argv[1] in ('-h', '--help'):
-    print("Usage: x_yt")
-    print("Interactive YouTube/video downloader (yt-dlp or youtube-dl)")
-    sys.exit(0)
+set -euo pipefail
 
-class EasyDownloader:
-    def __init__(self):
-        # Check for yt-dlp first, then fallback to youtube-dl
-        if shutil.which('yt-dlp'):
-            self.downloader = 'yt-dlp'
-        elif shutil.which('youtube-dl'):
-            self.downloader = 'youtube-dl'
-        else:
-            print("Error: Neither 'yt-dlp' nor 'youtube-dl' found in your PATH.")
-            print("Please install one (preferable yt-dlp) using: pip install yt-dlp")
-            input("Press Enter to exit...")
-            sys.exit(1)
+MODE="video"
+OUT_DIR="."
+FORMAT=""
+URL=""
 
-        print(f"Found downloader: {self.downloader}")
+usage() {
+    cat <<'EOF'
+Usage: x_yt [OPTIONS] URL
+       x_yt menu
 
-    def clear_screen(self):
-        os.system('cls' if os.name == 'nt' else 'clear')
+Download videos with yt-dlp.
 
-    def get_save_directory(self):
-        print("\nWhere do you want to save the files?")
-        print("Leave blank to use the current folder.")
-        path = input("Path > ").strip()
-        if path:
-            # Expand user paths like ~/Downloads
-            full_path = os.path.expanduser(path)
-            if not os.path.exists(full_path):
-                try:
-                    os.makedirs(full_path)
-                    return full_path
-                except Exception as e:
-                    print(f"Could not create directory: {e}")
-                    return os.getcwd()
-            return full_path
-        return os.getcwd()
+Options:
+  -a, --audio       Extract MP3 audio
+  -p, --playlist    Treat URL as playlist
+  -f, --format FMT  Custom yt-dlp format selector
+  -o, --out DIR     Output directory (default: current directory)
+  -h, --help        Show this help
 
-    def run_command(self, args, cwd=None):
-        print("\n--- Starting Download ---")
-        # Using shell=True for easier Windows compatibility in some environments,
-        # but generally passing chosen args list is safer.
-        try:
-            subprocess.run([self.downloader] + args, cwd=cwd, check=True)
-            print("\n--- Finished Successfully! ---")
-        except subprocess.CalledProcessError as e:
-            print(f"\n--- Error occurred during download (Code {e.returncode}) ---")
-        except FileNotFoundError:
-             print(f"\nError: Could not execute {self.downloader}. Is it definitely in your PATH?")
+Examples:
+  x_yt https://youtu.be/...
+  x_yt --audio --out ~/Music https://youtu.be/...
+  x_yt --playlist https://youtube.com/playlist?list=...
+EOF
+}
 
-    def menu(self):
-        while True:
-            self.clear_screen()
-            print(f"=== Easy YouTube Downloader Wrapper ({self.downloader}) ===")
-            print("1. Best Quality Video (Auto-merge best video + best audio)")
-            print("2. Audio Only (MP3 - High Quality)")
-            print("3. Download entire playlist (Best Quality)")
-            print("4. Download entire playlist (Audio Only MP3)")
-            print("5. Custom Format (Advanced users)")
-            print("Q. Quit")
-            
-            choice = input("\nSelect an option: ").lower()
+downloader() {
+    command -v yt-dlp >/dev/null 2>&1 && { echo yt-dlp; return; }
+    command -v youtube-dl >/dev/null 2>&1 && { echo youtube-dl; return; }
+    echo "Error: install yt-dlp first: python -m pip install yt-dlp" >&2
+    exit 1
+}
 
-            if choice == 'q':
-                break
+run_download() {
+    local bin
+    bin="$(downloader)"
+    mkdir -p "$OUT_DIR"
+    local args=(-o '%(title)s [%(id)s].%(ext)s')
 
-            if choice in ['1', '2', '3', '4', '5']:
-                url = input("Enter the URL: ").strip()
-                if not url:
-                    continue
-                
-                save_dir = self.get_save_directory()
-                base_args = []
+    [[ "$MODE" == "playlist" ]] && args+=(--yes-playlist)
+    if [[ "$MODE" == "audio" ]]; then
+        args+=(-x --audio-format mp3 --audio-quality 0)
+    elif [[ -n "$FORMAT" ]]; then
+        args+=(-f "$FORMAT")
+    else
+        args+=(-f 'bestvideo+bestaudio/best' --merge-output-format mp4)
+    fi
 
-                # Basic output template: Title - ID.extension
-                # This prevents duplicate overwrites if videos have same titles
-                output_template = '%(title)s [%(id)s].%(ext)s'
-                base_args.extend(['-o', output_template])
+    echo "Running: $bin ${args[*]} $URL"
+    (cd "$OUT_DIR" && "$bin" "${args[@]}" "$URL")
+}
 
-                # If you have ffmpeg installed, this ensures standard workable formats
-                # if not needed, these can sometimes be omitted, but recommended.
-                
-                if choice == '1':
-                    # Best video and best audio, merge them. 
-                    # Fallback to 'best' single file if merging fails (e.g. no ffmpeg)
-                    args = ['-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', url]
-                
-                elif choice == '2':
-                    # Extract audio (-x), convert to mp3, quality 0 (best VBR)
-                    args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', url]
+run_menu() {
+    echo "x_yt"
+    echo "1) Best quality video"
+    echo "2) MP3 audio"
+    echo "3) Playlist video"
+    echo "4) Custom format"
+    read -rp "Choice: " choice
+    read -rp "URL: " URL
+    read -rp "Output directory [.]: " OUT_DIR
+    OUT_DIR="${OUT_DIR:-.}"
+    case "$choice" in
+        1) MODE="video" ;;
+        2) MODE="audio" ;;
+        3) MODE="playlist" ;;
+        4) read -rp "Format selector: " FORMAT ;;
+        *) echo "Invalid choice."; exit 1 ;;
+    esac
+    run_download
+}
 
-                elif choice == '3':
-                    # Playlist best quality. 
-                    # --yes-playlist is default usually, but good to be explicit if url is ambiguous
-                    args = ['--yes-playlist', '-f', 'bestvideo+bestaudio/best', url]
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        menu) run_menu; exit 0 ;;
+        -a|--audio) MODE="audio"; shift ;;
+        -p|--playlist) MODE="playlist"; shift ;;
+        -f|--format) FORMAT="${2:-}"; shift 2 ;;
+        -o|--out) OUT_DIR="${2:-.}"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) URL="$1"; shift ;;
+    esac
+done
 
-                elif choice == '4':
-                    # Playlist audio only
-                    args = ['--yes-playlist', '-x', '--audio-format', 'mp3', '--audio-quality', '0', url]
-
-                elif choice == '5':
-                    # Let user type their own format string
-                    print("\nCommon formats: 'best', 'worst', 'mp4', 'm4a'")
-                    print("Specific resolution: 'bestvideo[height<=1080]+bestaudio/best'")
-                    fmt = input("Enter format string: ")
-                    args = ['-f', fmt, url]
-
-                final_cmd = base_args + args
-                
-                # Show the user what we are about to run (educational)
-                print(f"\nRunning command: {self.downloader} {' '.join(final_cmd)}")
-                
-                self.run_command(final_cmd, cwd=save_dir)
-                input("\nPress Enter to return to menu...")
-
-if __name__ == '__main__':
-    try:
-        app = EasyDownloader()
-        app.menu()
-    except KeyboardInterrupt:
-        print("\nExiting...")
-        sys.exit(0)
+[[ -n "$URL" ]] || { usage; exit 1; }
+run_download
