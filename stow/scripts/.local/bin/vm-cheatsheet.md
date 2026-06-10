@@ -7,6 +7,8 @@
 | Create VM                     | `x_vm create`           |
 | List VMs                      | `x_vm list`             |
 | Connect console + audio       | `x_vm connect --name <vm>` |
+| Diagnose VM audio routing     | `x_vm audio-status --name <vm>` |
+| Fix VM audio routing          | `x_vm audio-fix`        |
 | Start VM                      | `virsh --connect qemu:///system start <vm>` |
 | Stop VM (graceful)            | `virsh --connect qemu:///system shutdown <vm>` |
 | Stop VM (force)               | `virsh --connect qemu:///system destroy <vm>` |
@@ -56,13 +58,19 @@ Host USB mic → PulseAudio source → virt-viewer → SPICE record channel
 2. **Always connect via `x_vm connect`** — uses `virt-viewer --attach`, which creates the
    SPICE audio pipeline. virt-manager does not handle SPICE audio reliably.
 3. **Host default output must be HDMI** — set permanently in `~/.config/pulse/default.pa`
-4. **Host default input must be USB mic** — already set as system default
-5. Guest must have `spice-vdagent` installed (`x_vm guest-setup` handles this)
+4. **Virt Viewer's playback stream must be routed to HDMI** — PulseAudio stream-restore can
+   pin the app back to S/PDIF even when HDMI is the default.
+5. **Host default input must be USB mic** — already set as system default
+6. Guest must have `spice-vdagent` installed (`x_vm guest-setup` handles this)
    Note: spice-vdagent is for clipboard/display/mouse — SPICE audio works without it.
 
 ### Audio troubleshooting
 
 ```bash
+# One-command host-side diagnosis/fix
+x_vm audio-status --name <vm>
+x_vm audio-fix
+
 # Check audio is reaching host from VM (run while guest plays sound)
 pactl list sink-inputs short        # should show virt-viewer entry at 48000Hz 2ch
 
@@ -76,6 +84,10 @@ pactl set-default-sink alsa_output.pci-0000_01_00.1.hdmi-stereo
 # Move a running stream to HDMI manually
 pactl move-sink-input <id> alsa_output.pci-0000_01_00.1.hdmi-stereo
 ```
+
+Known recurring failure: the guest and SPICE are working, but PulseAudio has restored the
+`Virt Viewer` stream to S/PDIF (`alsa_output.pci-0000_00_1f.3.iec958-stereo`). In that case,
+`x_vm audio-fix` moves the live stream back to HDMI and resets the host defaults.
 
 ### Host audio devices
 | Device | Name |
@@ -94,6 +106,7 @@ pactl move-sink-input <id> alsa_output.pci-0000_01_00.1.hdmi-stereo
 - QEMU logs: `/var/log/libvirt/qemu/<vm-name>.log`
 - Audio driver: `spice` (PulseAudio `pa` driver fails — QEMU has no HOME/XDG env vars when launched by libvirtd)
 - virt-install version: 4.0.0 (options use `key=value` form, e.g. `--audio id=1,type=spice`)
+- Recurrent host routing failure: PulseAudio stream-restore can remember `Virt Viewer` on S/PDIF; run `x_vm audio-fix`
 
 ---
 
@@ -156,6 +169,8 @@ x_vm                                          # interactive menu
 x_vm create --profile template --os ubuntu26  # create Ubuntu 26 template VM
 x_vm create --profile dev --os ubuntu26       # create dev VM (4 vCPU, 8GB, 80GB)
 x_vm connect --name <vm>                      # open console via virt-viewer (audio works)
+x_vm audio-status --name <vm>                 # inspect host/SPICE audio routing
+x_vm audio-fix                                # move Virt Viewer audio back to HDMI
 x_vm list                                     # list all VMs
 x_vm delete --name <vm>                       # delete VM and disk
 x_vm guest-setup                              # run INSIDE guest after install

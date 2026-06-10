@@ -1,121 +1,144 @@
 # VM Audio Debug — Known Facts
 
-## Goal
-Guest VM (Ubuntu 26.04, `template_ubuntu26`) to have working:
-- **Audio output** → host HDMI monitor speakers
-- **Audio input** → host USB condenser microphone
+## Current Working Design
 
-The host has both working correctly.
+Guest audio uses SPICE, not QEMU's direct PulseAudio backend.
 
----
+Playback chain:
 
-## Host Environment
-
-| Item | Value |
-|------|-------|
-| OS | Ubuntu 22.04 (jammy) |
-| Desktop | XFCE |
-| QEMU machine type | `pc-q35-6.2` |
-| Libvirt connection | `qemu:///system` |
-| PulseAudio socket | `/run/user/1000/pulse/native` |
-| PipeWire socket | `/run/user/1000/pipewire-0` (exists) |
-| Default output sink | `alsa_output.pci-0000_01_00.1.hdmi-stereo` (HDMI) |
-| Default input source | `alsa_input.usb-Generic_USB_Condenser_Microphone_201701110001-00.analog-stereo` |
-
-### QEMU process facts
-- Runs as user `maccalsa` (UID 1000) — correct user
-- Has **no** `HOME`, `USER`, or `XDG_RUNTIME_DIR` in its environment
-- Has only `XDG_DATA_DIRS` set
-- `qemu:commandline` env entries appear in `dumpxml` XML but do **not** appear in `/proc/PID/environ` — reason unknown
-- QEMU sandbox enabled: `-sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny`
-
-### QEMU audio driver support
-```
-qemu-system-x86_64 -audiodev help  →  "Help is not available for this option"
-pipewire audiodev: NOT compiled in
-pa (PulseAudio) audiodev: compiled in, but failing
+```text
+Guest app -> PipeWire -> ICH9 sound card -> QEMU spice audiodev
+-> SPICE playback channel -> virt-viewer -> host PulseAudio -> HDMI speakers
 ```
 
----
+Microphone chain:
 
-## VM Configuration (current)
+```text
+Host USB mic -> host PulseAudio -> virt-viewer -> SPICE record channel
+-> QEMU -> ICH9 sound card -> guest PipeWire
+```
+
+The supported way to open the console is:
+
+```bash
+x_vm connect --name <vm>
+```
+
+## Known Good VM Configuration
+
+The VM XML should contain SPICE audio:
 
 ```xml
-<sound model='ich9-intel-hda'>
-<audio id='1' type='pulseaudio' serverName='/run/user/1000/pulse/native'/>
-<video model='virtio'/>
+<sound model='ich9'/>
+<audio id='1' type='spice'/>
+<graphics type='spice'/>
 ```
 
-QEMU command generated:
-```
--audiodev '{"id":"audio1","driver":"pa","server":"/run/user/1000/pulse/native"}'
+The running QEMU command should contain:
+
+```text
+-audiodev {"id":"audio1","driver":"spice"}
 -device ich9-intel-hda
--device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0,audiodev=audio1
+-device hda-duplex,...,audiodev=audio1
 ```
 
----
+`virt-install` 4.0.0 needs explicit `key=value` audio syntax:
 
-## What Works
+```bash
+--sound ich9
+--audio id=1,type=spice
+```
 
-- SPICE display ✓
-- Clipboard sharing (spice-vdagent) ✓
-- Mouse integration ✓
-- VM networking ✓
-- Host audio output (HDMI speakers) ✓
-- Host audio input (USB mic, `pactl` confirms correct default source) ✓
-- SPICE audio **output** — works but ~12 second latency via virt-manager
+## Known Bad Configuration
 
----
+Do not use QEMU's direct PulseAudio backend for system libvirt VMs:
 
-## What Doesn't Work
+```xml
+<audio id='1' type='pulseaudio' serverName='/run/user/1000/pulse/native'/>
+```
 
-- QEMU `pa` audiodev cannot connect to PulseAudio:
-  ```
-  pulseaudio: pa_context_connect() failed
-  pulseaudio: Reason: Connection refused
-  pulseaudio: Failed to initialize PA context
-  audio: Could not init `pa' audio driver
-  audio: warning: Using timer based audio emulation
-  ```
-- No sink-inputs appear on host when guest plays audio
-- No source-outputs appear on host when guest records
-- `qemu:commandline` env var injection (HOME, XDG_RUNTIME_DIR) does not appear in QEMU process environment
+It generates a QEMU `pa` audiodev and fails because QEMU launched by libvirtd does not have the
+normal desktop PulseAudio environment:
 
----
+```text
+pulseaudio: pa_context_connect() failed
+pulseaudio: Reason: Connection refused
+audio: Could not init `pa' audio driver
+```
 
-## Approaches Tried (all failed for `pa` driver)
+Attempts to inject `HOME` or `XDG_RUNTIME_DIR` via `qemu:commandline` were not reliable. The fix is
+to keep QEMU on `type='spice'` and let `virt-viewer` talk to the user's PulseAudio session.
 
-| Attempt | Result |
-|---------|--------|
-| `--audio type=spice` | Works but ~12s latency via virt-manager |
-| `--audio type=pulseaudio` (no server) | Connection refused |
-| `type=pulseaudio` + `serverName=/run/user/1000/pulse/native` | Connection refused |
-| `type=pulseaudio` + `serverName` + `mixingEngine='no'` | Connection refused |
-| `type=pulseaudio` + `qemu:env HOME + XDG_RUNTIME_DIR` | Env vars in XML but not in process, still Connection refused |
-| `type=pipewire` | Not compiled into QEMU on this system |
+## Recurring Failure
 
----
+The VM can be fully correct and still produce no audible sound if host PulseAudio routes the
+`Virt Viewer` playback stream to S/PDIF instead of HDMI.
 
-## Approaches Not Yet Tried
+Confirmed failure pattern:
 
-1. **Anonymous PulseAudio Unix socket** — load `module-native-protocol-unix socket=/tmp/pulse-vm.sock auth-anonymous=1` and point QEMU at it. Removes all auth from the equation.
+```text
+Default Sink: alsa_output.pci-0000_01_00.1.hdmi-stereo
+Virt Viewer sink input: alsa_output.pci-0000_00_1f.3.iec958-stereo
+```
 
-2. **PulseAudio TCP** — `pactl load-module module-native-protocol-tcp port=4713 auth-anonymous=1`, use `serverName=tcp:127.0.0.1:4713`. Similar to above but via TCP.
+This happens because PulseAudio stream-restore remembers a per-application route for
+`application.name = "Virt Viewer"` and can override the current default sink.
 
-3. **SPICE audio via `virt-viewer` instead of `virt-manager`** — virt-manager uses GStreamer for SPICE audio (high latency). `virt-viewer`/`remote-viewer` uses a different SPICE audio path and may have much lower latency. **This is worth trying — SPICE audio IS working, just slow.**
+## Self-Service Commands
 
-4. **USB passthrough** — pass the USB microphone directly to the guest via `<hostdev>`. Guest gets direct device access, bypasses all QEMU audio complexity. Output would still need fixing separately.
+Run this on the host while sound is playing in the guest:
 
-5. **Virtio-sound** — newer paravirtualized audio device (`<sound model='virtio'>`). Requires kernel 5.14+ in guest (Ubuntu 26.04 qualifies). Still needs a working host audiodev backend though.
+```bash
+x_vm audio-status --name <vm>
+```
 
-6. **Investigate sandbox blocking** — the QEMU `-sandbox on` seccomp filter may be blocking the socket `connect()` syscall. Test by temporarily creating a VM without the sandbox to confirm/rule out.
+If the `Virt Viewer` stream is on S/PDIF, fix it with:
 
-7. **Why do `qemu:env` entries not reach the process?** — this is unexplained and worth understanding before trying more audiodev configs.
+```bash
+x_vm audio-fix
+```
 
----
+`audio-fix` does three things:
 
-## Recommended Next Step
+1. Sets the host default output to HDMI.
+2. Sets the host default input to the USB condenser microphone.
+3. Moves any active `Virt Viewer` playback stream to HDMI.
 
-**Try option 3 first** (virt-viewer for SPICE audio) — it requires zero VM config changes and SPICE output is already confirmed working. If latency is acceptable, that solves output. Mic input via SPICE is also supported by the protocol.
+## Manual Host Commands
 
-If that fails, try **option 1** (anonymous Unix socket) which definitively removes the auth/env problem.
+Useful when debugging without `x_vm`:
+
+```bash
+# Host default devices
+pactl info | grep -E "Default Sink|Default Source"
+
+# Host audio devices
+pactl list sinks short
+pactl list sources short
+
+# Active playback streams; Virt Viewer should be on HDMI
+pactl list sink-inputs short
+
+# Move a live Virt Viewer stream manually
+pactl move-sink-input <id> alsa_output.pci-0000_01_00.1.hdmi-stereo
+
+# Reset defaults manually
+pactl set-default-sink alsa_output.pci-0000_01_00.1.hdmi-stereo
+pactl set-default-source alsa_input.usb-Generic_USB_Condenser_Microphone_201701110001-00.analog-stereo
+```
+
+## Guest Checks
+
+Run inside the VM:
+
+```bash
+pactl info | grep -E "Server Name|Default Sink|Default Source"
+pactl list sinks short
+pactl list cards short
+aplay -l
+systemctl --user --no-pager --full status pipewire pipewire-pulse wireplumber
+speaker-test -t wav -c 2
+```
+
+If `speaker-test` runs cleanly and `x_vm audio-status` shows a live `Virt Viewer` sink input on the
+host, the guest audio stack is working. The remaining problem is host routing.

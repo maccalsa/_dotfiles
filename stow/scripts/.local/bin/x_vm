@@ -10,6 +10,8 @@ set -euo pipefail
 DEFAULT_CONNECT="qemu:///system"
 DEFAULT_OS="ubuntu"
 DEFAULT_PROFILE="dev"
+HOST_AUDIO_SINK="alsa_output.pci-0000_01_00.1.hdmi-stereo"
+HOST_AUDIO_SOURCE="alsa_input.usb-Generic_USB_Condenser_Microphone_201701110001-00.analog-stereo"
 
 # Profile presets: <vcpus> <ram_mb> <disk_gb>
 PROFILE_TEMPLATE_VCPUS=2;  PROFILE_TEMPLATE_RAM=4096;  PROFILE_TEMPLATE_DISK=40
@@ -125,6 +127,8 @@ Subcommands:
   stop         Gracefully shut down a VM                          (host)
   edit         Edit VM XML configuration                          (host)
   connect      Open VM console via virt-viewer (best for audio)   (host)
+  audio-status Show host/SPICE audio routing diagnostics           (host)
+  audio-fix    Route host VM audio streams to HDMI                 (host)
   host-setup   Install KVM/libvirt/SPICE stack on this machine    (host)
   guest-setup  Configure audio, SPICE agent, and optional RDP     (guest)
   resize       Detect and grow root partition after disk expand   (guest)
@@ -174,6 +178,14 @@ edit options:
   --name NAME                   VM name (required)
   --connect URI                 Libvirt URI (default: qemu:///system)
 
+audio-status options:
+  --name NAME                   Also inspect VM XML/SPICE channels (optional)
+  --connect URI                 Libvirt URI (default: qemu:///system)
+
+audio-fix options:
+  --name NAME                   Also inspect VM XML/SPICE channels after fix (optional)
+  --connect URI                 Libvirt URI (default: qemu:///system)
+
 guest-setup options:
   --rdp                         Also install and enable xrdp for remote desktop
 
@@ -188,6 +200,8 @@ Examples:
   x_vm create --name my-vm --ram 16384 --vcpus 8 --disk-size 120
   x_vm delete --name ubuntu-dev --yes
   x_vm list
+  x_vm audio-status --name popos20.04
+  x_vm audio-fix
   x_vm host-setup
   x_vm guest-setup --rdp
   x_vm resize
@@ -211,6 +225,8 @@ interactive_menu() {
     "delete VM"
     "list VMs"
     "connect to VM (virt-viewer)"
+    "audio-status (host)"
+    "audio-fix (host)"
     "host-setup (install KVM stack)"
     "guest-setup (run inside guest)"
     "resize disk (run inside guest)"
@@ -241,6 +257,16 @@ interactive_menu() {
       "connect to VM (virt-viewer)")
         read -rp "VM name to connect to: " VM_NAME
         OPERATION="connect"
+        return
+        ;;
+      "audio-status (host)")
+        read -rp "VM name to inspect too (optional): " VM_NAME
+        OPERATION="audio-status"
+        return
+        ;;
+      "audio-fix (host)")
+        read -rp "VM name to inspect too (optional): " VM_NAME
+        OPERATION="audio-fix"
         return
         ;;
       "host-setup (install KVM stack)")
@@ -279,7 +305,7 @@ parse_args() {
   fi
 
   case "$1" in
-    create|delete|list|start|stop|edit|connect|host-setup|guest-setup|resize)
+    create|delete|list|start|stop|edit|connect|audio-status|audio-fix|host-setup|guest-setup|resize|self-test)
       OPERATION="$1"
       shift
       ;;
@@ -483,7 +509,7 @@ do_create() {
 VM created and installer started.
 
 Open it with:
-  virt-manager --connect "$CONNECT_URI" --show-domain-console "$VM_NAME"
+  x_vm connect --name "$VM_NAME"
 
 After completing the OS install in the VM, run inside the guest:
   x_vm guest-setup
@@ -625,6 +651,137 @@ do_connect() {
   exists virt-viewer || { err "virt-viewer not found. Install with: sudo apt install virt-viewer"; exit 1; }
   printf 'Connecting to %s via virt-viewer...\n' "$VM_NAME"
   virt-viewer --connect "$CONNECT_URI" --attach "$VM_NAME" &
+}
+
+# ---------------------------------------------------------------------------
+# audio-status / audio-fix (runs on the host)
+# ---------------------------------------------------------------------------
+
+require_audio_deps() {
+  exists pactl || { err "pactl not found. Install PulseAudio/PipeWire PulseAudio tools."; exit 1; }
+}
+
+virt_viewer_sink_inputs() {
+  pactl list sink-inputs | awk '
+    /^Sink Input #/ {
+      if (id != "" && is_viewer) print id
+      id=$3
+      sub(/^#/, "", id)
+      is_viewer=0
+    }
+    /application\.name = "Virt Viewer"/ || /application\.process\.binary = "virt-viewer"/ {
+      is_viewer=1
+    }
+    END {
+      if (id != "" && is_viewer) print id
+    }
+  '
+}
+
+virt_viewer_source_outputs() {
+  pactl list source-outputs | awk '
+    /^Source Output #/ {
+      if (id != "" && is_viewer) print id
+      id=$3
+      sub(/^#/, "", id)
+      is_viewer=0
+    }
+    /application\.name = "Virt Viewer"/ || /application\.process\.binary = "virt-viewer"/ {
+      is_viewer=1
+    }
+    END {
+      if (id != "" && is_viewer) print id
+    }
+  '
+}
+
+print_audio_status() {
+  echo "==> Host PulseAudio defaults"
+  pactl info | awk '/Default Sink|Default Source|Server Name/ { print }'
+  echo
+
+  echo "==> Host sinks"
+  pactl list sinks short
+  echo
+
+  echo "==> Active playback streams"
+  pactl list sink-inputs short
+  echo
+
+  echo "==> Virt Viewer playback stream details"
+  local input found=false
+  while read -r input; do
+    [[ -z "$input" ]] && continue
+    found=true
+    pactl list sink-inputs | awk -v target="Sink Input #$input" '
+      $0 == target { printing=1 }
+      printing { print }
+      printing && /^$/ { exit }
+    '
+  done < <(virt_viewer_sink_inputs)
+  $found || echo "(no active Virt Viewer playback stream; start sound in the guest first)"
+  echo
+
+  echo "==> Host sources"
+  pactl list sources short
+  echo
+
+  echo "==> Active recording streams"
+  pactl list source-outputs short
+  echo
+
+  if [[ -n "$VM_NAME" ]] && exists virsh && vm_exists; then
+    echo "==> VM audio XML"
+    virsh --connect "$CONNECT_URI" dumpxml "$VM_NAME" \
+      | awk '/<sound / || /<audio / || /<graphics / { print }'
+    echo
+
+    echo "==> SPICE channels"
+    virsh --connect "$CONNECT_URI" qemu-monitor-command "$VM_NAME" --hmp "info spice" || true
+  elif [[ -n "$VM_NAME" ]]; then
+    echo "==> VM audio XML"
+    echo "(VM '$VM_NAME' not found or virsh unavailable)"
+  fi
+}
+
+do_audio_status() {
+  require_audio_deps
+  print_audio_status
+}
+
+do_audio_fix() {
+  require_audio_deps
+
+  echo "==> Setting host defaults"
+  pactl set-default-sink "$HOST_AUDIO_SINK"
+  pactl set-default-source "$HOST_AUDIO_SOURCE"
+  printf 'Default sink:   %s\n' "$HOST_AUDIO_SINK"
+  printf 'Default source: %s\n' "$HOST_AUDIO_SOURCE"
+  echo
+
+  echo "==> Moving active Virt Viewer playback streams to HDMI"
+  local input moved=false
+  while read -r input; do
+    [[ -z "$input" ]] && continue
+    pactl move-sink-input "$input" "$HOST_AUDIO_SINK"
+    printf 'Moved sink input %s -> %s\n' "$input" "$HOST_AUDIO_SINK"
+    moved=true
+  done < <(virt_viewer_sink_inputs)
+  $moved || echo "(no active Virt Viewer playback stream; start sound in the guest and run this again)"
+  echo
+
+  echo "==> Moving active Virt Viewer recording streams to USB mic"
+  local output moved_record=false
+  while read -r output; do
+    [[ -z "$output" ]] && continue
+    pactl move-source-output "$output" "$HOST_AUDIO_SOURCE"
+    printf 'Moved source output %s -> %s\n' "$output" "$HOST_AUDIO_SOURCE"
+    moved_record=true
+  done < <(virt_viewer_source_outputs)
+  $moved_record || echo "(no active Virt Viewer recording stream)"
+  echo
+
+  print_audio_status
 }
 
 # ---------------------------------------------------------------------------
@@ -911,6 +1068,8 @@ main() {
     stop)        do_stop ;;
     edit)        do_edit ;;
     connect)     do_connect ;;
+    audio-status) do_audio_status ;;
+    audio-fix)   do_audio_fix ;;
     host-setup)  do_host_setup ;;
     guest-setup) do_guest_setup ;;
     resize)      do_resize ;;
