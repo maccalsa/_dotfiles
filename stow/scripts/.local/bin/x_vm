@@ -42,6 +42,7 @@ CONNECT_URI="$DEFAULT_CONNECT"
 NETWORK=""
 OS_VARIANT=""
 RECREATE=false
+FORCE=false
 KEEP_STORAGE=false
 ASSUME_YES=false
 DRY_RUN=false
@@ -118,8 +119,11 @@ Usage:
 
 Subcommands:
   create       Create and start a new VM                          (host)
-  delete       Destroy and undefine a VM                          (host)
+  delete       Destroy and undefine a VM + disk                   (host)
   list         List all VMs                                       (host)
+  start        Boot a VM                                          (host)
+  stop         Gracefully shut down a VM                          (host)
+  edit         Edit VM XML configuration                          (host)
   connect      Open VM console via virt-viewer (best for audio)   (host)
   host-setup   Install KVM/libvirt/SPICE stack on this machine    (host)
   guest-setup  Configure audio, SPICE agent, and optional RDP     (guest)
@@ -155,6 +159,19 @@ delete options:
   -y, --yes                     Skip confirmation prompt
 
 list options:
+  --connect URI                 Libvirt URI (default: qemu:///system)
+
+start options:
+  --name NAME                   VM name (required)
+  --connect URI                 Libvirt URI (default: qemu:///system)
+
+stop options:
+  --name NAME                   VM name (required)
+  --force                       Hard kill instead of graceful shutdown
+  --connect URI                 Libvirt URI (default: qemu:///system)
+
+edit options:
+  --name NAME                   VM name (required)
   --connect URI                 Libvirt URI (default: qemu:///system)
 
 guest-setup options:
@@ -262,7 +279,7 @@ parse_args() {
   fi
 
   case "$1" in
-    create|delete|list|connect|host-setup|guest-setup|resize|self-test)
+    create|delete|list|start|stop|edit|connect|host-setup|guest-setup|resize)
       OPERATION="$1"
       shift
       ;;
@@ -294,6 +311,7 @@ parse_args() {
       --connect)   CONNECT_URI="${2:-}";    shift 2 ;;
       --network)   NETWORK="${2:-}";        shift 2 ;;
       --os-variant) OS_VARIANT="${2:-}";   shift 2 ;;
+      --force)     FORCE=true;              shift ;;
       --recreate)  RECREATE=true;           shift ;;
       --keep-storage) KEEP_STORAGE=true;   shift ;;
       -y|--yes)    ASSUME_YES=true;         shift ;;
@@ -560,6 +578,34 @@ do_list() {
   require_host_deps
   printf 'VMs on %s:\n\n' "$CONNECT_URI"
   virsh --connect "$CONNECT_URI" list --all
+}
+
+# ---------------------------------------------------------------------------
+# start / stop / edit
+# ---------------------------------------------------------------------------
+
+do_start() {
+  require_host_deps
+  if [[ -z "$VM_NAME" ]]; then err "--name is required for start"; exit 1; fi
+  virsh --connect "$CONNECT_URI" start "$VM_NAME"
+}
+
+do_stop() {
+  require_host_deps
+  if [[ -z "$VM_NAME" ]]; then err "--name is required for stop"; exit 1; fi
+  if $FORCE; then
+    printf 'Force-stopping %s...\n' "$VM_NAME"
+    virsh --connect "$CONNECT_URI" destroy "$VM_NAME"
+  else
+    printf 'Shutting down %s (graceful)...\n' "$VM_NAME"
+    virsh --connect "$CONNECT_URI" shutdown "$VM_NAME"
+  fi
+}
+
+do_edit() {
+  require_host_deps
+  if [[ -z "$VM_NAME" ]]; then err "--name is required for edit"; exit 1; fi
+  virsh --connect "$CONNECT_URI" edit "$VM_NAME"
 }
 
 # ---------------------------------------------------------------------------
@@ -861,6 +907,9 @@ main() {
     create)      do_create ;;
     delete)      do_delete ;;
     list)        do_list ;;
+    start)       do_start ;;
+    stop)        do_stop ;;
+    edit)        do_edit ;;
     connect)     do_connect ;;
     host-setup)  do_host_setup ;;
     guest-setup) do_guest_setup ;;

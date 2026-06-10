@@ -50,11 +50,15 @@ Host USB mic → PulseAudio source → virt-viewer → SPICE record channel
 ```
 
 ### Rules for audio to work
-1. **Always connect via `x_vm connect`** — uses virt-viewer, not virt-manager
-   - virt-manager does not reliably handle SPICE audio
-2. **Host default output must be HDMI** — set permanently in `~/.config/pulse/default.pa`
-3. **Host default input must be USB mic** — already set as system default
-4. Guest must have `spice-vdagent` installed (`x_vm guest-setup` handles this)
+1. **VM audio must use `type='spice'`** — the `pa` (PulseAudio) driver fails because
+   QEMU running under libvirtd has no access to the user's PulseAudio session (no HOME/XDG vars).
+   SPICE audio routes through virt-viewer instead, which runs in the full user session.
+2. **Always connect via `x_vm connect`** — uses `virt-viewer --attach`, which creates the
+   SPICE audio pipeline. virt-manager does not handle SPICE audio reliably.
+3. **Host default output must be HDMI** — set permanently in `~/.config/pulse/default.pa`
+4. **Host default input must be USB mic** — already set as system default
+5. Guest must have `spice-vdagent` installed (`x_vm guest-setup` handles this)
+   Note: spice-vdagent is for clipboard/display/mouse — SPICE audio works without it.
 
 ### Audio troubleshooting
 
