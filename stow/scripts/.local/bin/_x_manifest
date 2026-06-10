@@ -35,6 +35,7 @@ x_archive|Compress dir to tar.gz/zip (gz, bz2, xz, zst)
 x_base64|Deprecated: use coreutils base64 directly
 x_ctx|Generate PRD-driven AI coding context and workflow prompts
 x_extract|Extract archives by extension (tar.gz, zip, 7z, etc.)
+x_upgrade_apps|Interactively check and upgrade supported desktop/dev apps
 x_json|Pretty-print JSON (jq or python)
 x_md2pdf|Markdown to PDF (--input, --input-type md|url, optional --output / --stylesheet)
 x_password|Generate random password (copies to clipboard if xclip)

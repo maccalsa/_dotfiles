@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# x_upgrade_apps - Interactively check and upgrade desktop/dev apps from dotfiles installers
+
+APT_METADATA_REFRESHED=false
+
+usage() {
+  cat <<'USAGE'
+Usage: x_upgrade_apps [options]
+
+Interactively walk through supported app installers. For each app, choose whether
+to check it; when a newer version is detected, choose whether to run the upgrade.
+
+Options:
+  -h, --help  Show this help
+
+Environment:
+  DOTFILES_ROOT  Dotfiles checkout path. Default: auto-detected, then ~/_dotfiles fallback.
+
+Supported apps:
+  IntelliJ IDEA Ultimate, DBeaver CE, Cursor, Docker, Neovim
+USAGE
+}
+
+resolve_script_dir() {
+  local source dir
+  source="${BASH_SOURCE[0]}"
+
+  while [ -L "$source" ]; do
+    dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+
+  cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd
+}
+
+detect_dotfiles_root() {
+  local script_dir candidate
+  script_dir="$(resolve_script_dir)"
+  candidate="$(cd "$script_dir/../../../.." >/dev/null 2>&1 && pwd)"
+
+  if [ -d "$candidate/installers" ]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  if [ -d "$HOME/_dotfiles/installers" ]; then
+    printf '%s\n' "$HOME/_dotfiles"
+    return 0
+  fi
+
+  printf 'Unable to find dotfiles installers. Set DOTFILES_ROOT=/path/to/_dotfiles.\n' >&2
+  exit 1
+}
+
+DOTFILES_ROOT="${DOTFILES_ROOT:-$(detect_dotfiles_root)}"
+INSTALLERS_DIR="$DOTFILES_ROOT/installers"
+
+ask_yes_no() {
+  local prompt="$1"
+  local answer
+
+  read -r -p "$prompt (y/N): " answer
+  [[ "$answer" =~ ^[Yy]$ ]]
+}
+
+refresh_apt_metadata() {
+  if [ "$APT_METADATA_REFRESHED" = true ]; then
+    return 0
+  fi
+
+  echo "Refreshing apt package metadata..."
+  sudo apt-get update
+  APT_METADATA_REFRESHED=true
+}
+
+run_with_status() {
+  set +e
+  "$@"
+  local status=$?
+  set -e
+  return "$status"
+}
+
+run_installer_status() {
+  local script="$1"
+  run_with_status bash "$script" status
+}
+
+apt_packages_status() {
+  local label="$1"
+  shift
+
+  refresh_apt_metadata
+
+  local installed_any=false
+  local upgrade_available=false
+  local pkg installed candidate
+
+  for pkg in "$@"; do
+    installed="$(dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null || true)"
+    candidate="$(apt-cache policy "$pkg" 2>/dev/null | awk '/^[[:space:]]*Candidate:/ {print $2}')"
+
+    if [ -z "$installed" ]; then
+      printf '%s: %s is not installed\n' "$label" "$pkg"
+      continue
+    fi
+
+    installed_any=true
+    printf '%s: %s installed=%s candidate=%s\n' "$label" "$pkg" "$installed" "${candidate:-unknown}"
+
+    if [ -n "$candidate" ] && [ "$candidate" != "(none)" ] && dpkg --compare-versions "$candidate" gt "$installed"; then
+      upgrade_available=true
+    fi
+  done
+
+  if [ "$upgrade_available" = true ]; then
+    printf '%s: upgrade available\n' "$label"
+    return 10
+  fi
+
+  if [ "$installed_any" = false ]; then
+    return 11
+  fi
+
+  printf '%s: current\n' "$label"
+  return 0
+}
+
+github_latest_tag() {
+  local repo="$1"
+
+  if ! command -v curl >/dev/null 2>&1; then
+    printf 'curl is required to check GitHub releases.\n' >&2
+    return 3
+  fi
+
+  curl -fsSL "https://api.github.com/repos/${repo}/releases/latest" |
+    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
+    sed -n '1p'
+}
+
+status_intellij() {
+  run_installer_status "$INSTALLERS_DIR/install_intellij.sh"
+}
+
+upgrade_intellij() {
+  bash "$INSTALLERS_DIR/install_intellij.sh" upgrade --yes
+}
+
+status_dbeaver() {
+  run_installer_status "$INSTALLERS_DIR/install_dbeaver.sh"
+}
+
+upgrade_dbeaver() {
+  bash "$INSTALLERS_DIR/install_dbeaver.sh" upgrade --yes
+}
+
+status_cursor() {
+  apt_packages_status "Cursor" cursor
+}
+
+upgrade_cursor() {
+  bash "$INSTALLERS_DIR/install_cursor.sh" upgrade
+}
+
+status_docker() {
+  apt_packages_status "Docker" docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+}
+
+upgrade_docker() {
+  bash "$INSTALLERS_DIR/install_docker.sh" upgrade
+}
+
+status_neovim() {
+  local current latest
+
+  latest="$(github_latest_tag "neovim/neovim")"
+  if [ -z "$latest" ]; then
+    printf 'Neovim: unable to resolve latest release.\n' >&2
+    return 3
+  fi
+
+  if ! command -v nvim >/dev/null 2>&1; then
+    printf 'Neovim: not installed. Latest available: %s\n' "$latest"
+    return 11
+  fi
+
+  current="$(nvim --version | sed -n '1s/^NVIM //p')"
+  printf 'Neovim: installed=%s latest=%s\n' "${current:-unknown}" "$latest"
+
+  if [ -n "$current" ] && [ "$current" = "$latest" ]; then
+    printf 'Neovim: current\n'
+    return 0
+  fi
+
+  printf 'Neovim: upgrade available\n'
+  return 10
+}
+
+upgrade_neovim() {
+  bash "$INSTALLERS_DIR/install_neovim.sh" reinstall --latest
+}
+
+handle_app() {
+  local name="$1"
+  local status_func="$2"
+  local upgrade_func="$3"
+  local status
+
+  echo
+  if ! ask_yes_no "Check $name for upgrade?"; then
+    echo "Skipped $name."
+    return 0
+  fi
+
+  if run_with_status "$status_func"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  case "$status" in
+    0)
+      echo "$name is already current."
+      ;;
+    10)
+      if ask_yes_no "Upgrade $name now?"; then
+        "$upgrade_func"
+      else
+        echo "Skipped $name upgrade."
+      fi
+      ;;
+    11)
+      echo "$name is not installed; skipping upgrade."
+      ;;
+    *)
+      echo "Could not determine $name upgrade status (exit $status); skipping." >&2
+      ;;
+  esac
+}
+
+main() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        printf 'x_upgrade_apps: unknown argument: %s\n\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  if [ ! -d "$INSTALLERS_DIR" ]; then
+    printf 'Installer directory not found: %s\n' "$INSTALLERS_DIR" >&2
+    exit 1
+  fi
+
+  echo "x_upgrade_apps - interactive app upgrades"
+  echo "Dotfiles: $DOTFILES_ROOT"
+
+  handle_app "IntelliJ IDEA Ultimate" status_intellij upgrade_intellij
+  handle_app "DBeaver CE" status_dbeaver upgrade_dbeaver
+  handle_app "Cursor" status_cursor upgrade_cursor
+  handle_app "Docker" status_docker upgrade_docker
+  handle_app "Neovim" status_neovim upgrade_neovim
+
+  echo
+  echo "Done."
+}
+
+main "$@"

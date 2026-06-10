@@ -1,91 +1,329 @@
-#!/usr/bin/env bash
-# x_yt - Download video/audio with yt-dlp.
+#!/usr/bin/env python3
+# x_yt - Interactive YouTube/video downloader wrapper (yt-dlp)
 
-set -euo pipefail
+import os
+import re
+import subprocess
+import sys
+import shutil
+from datetime import datetime, timezone
 
-MODE="video"
-OUT_DIR="."
-FORMAT=""
-URL=""
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print("Usage: x_yt")
+    print("Interactive YouTube/video downloader (yt-dlp)")
+    print()
+    print("On startup you will be asked which browser to pull cookies from.")
+    print("This is required for YouTube downloads in 2026 (PO token / SABR bypass).")
+    sys.exit(0)
 
-usage() {
-    cat <<'EOF'
-Usage: x_yt [OPTIONS] URL
-       x_yt menu
+# yt-dlp versions older than this many days trigger an update prompt.
+MAX_VERSION_AGE_DAYS = 30
 
-Download videos with yt-dlp.
+# Node.js search paths beyond PATH (e.g. nvm installs).
+_EXTRA_NODE_DIRS = [
+    os.path.expanduser("~/.nvm/versions/node/*/bin"),
+    "/usr/local/bin",
+    "/usr/bin",
+]
 
-Options:
-  -a, --audio       Extract MP3 audio
-  -p, --playlist    Treat URL as playlist
-  -f, --format FMT  Custom yt-dlp format selector
-  -o, --out DIR     Output directory (default: current directory)
-  -h, --help        Show this help
+# Browsers yt-dlp can pull cookies from, ordered by preference.
+SUPPORTED_BROWSERS = ["firefox", "chrome", "chromium", "brave", "opera", "vivaldi", "safari"]
 
-Examples:
-  x_yt https://youtu.be/...
-  x_yt --audio --out ~/Music https://youtu.be/...
-  x_yt --playlist https://youtube.com/playlist?list=...
-EOF
-}
 
-downloader() {
-    command -v yt-dlp >/dev/null 2>&1 && { echo yt-dlp; return; }
-    command -v youtube-dl >/dev/null 2>&1 && { echo youtube-dl; return; }
-    echo "Error: install yt-dlp first: python -m pip install yt-dlp" >&2
-    exit 1
-}
+# ---------------------------------------------------------------------------
+# Version check
+# ---------------------------------------------------------------------------
 
-run_download() {
-    local bin
-    bin="$(downloader)"
-    mkdir -p "$OUT_DIR"
-    local args=(-o '%(title)s [%(id)s].%(ext)s')
+def _version_date(version_str: str) -> datetime | None:
+    m = re.fullmatch(r"(\d{4})\.(\d{1,2})\.(\d{1,2})(?:\.\d+)?", version_str.strip())
+    if not m:
+        return None
+    try:
+        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
-    [[ "$MODE" == "playlist" ]] && args+=(--yes-playlist)
-    if [[ "$MODE" == "audio" ]]; then
-        args+=(-x --audio-format mp3 --audio-quality 0)
-    elif [[ -n "$FORMAT" ]]; then
-        args+=(-f "$FORMAT")
-    else
-        args+=(-f 'bestvideo+bestaudio/best' --merge-output-format mp4)
-    fi
 
-    echo "Running: $bin ${args[*]} $URL"
-    (cd "$OUT_DIR" && "$bin" "${args[@]}" "$URL")
-}
+def _find_node() -> str | None:
+    """
+    Return the path of a Node.js binary meeting yt-dlp's minimum (v22).
+    Checks PATH first, then common nvm/system locations.
+    """
+    import glob
 
-run_menu() {
-    echo "x_yt"
-    echo "1) Best quality video"
-    echo "2) MP3 audio"
-    echo "3) Playlist video"
-    echo "4) Custom format"
-    read -rp "Choice: " choice
-    read -rp "URL: " URL
-    read -rp "Output directory [.]: " OUT_DIR
-    OUT_DIR="${OUT_DIR:-.}"
-    case "$choice" in
-        1) MODE="video" ;;
-        2) MODE="audio" ;;
-        3) MODE="playlist" ;;
-        4) read -rp "Format selector: " FORMAT ;;
-        *) echo "Invalid choice."; exit 1 ;;
-    esac
-    run_download
-}
+    candidates: list[str] = []
+    # PATH-visible binaries first
+    for name in ("node", "nodejs"):
+        path = shutil.which(name)
+        if path:
+            candidates.append(path)
+    # Extra locations (nvm, system)
+    for pattern in _EXTRA_NODE_DIRS:
+        for directory in glob.glob(pattern):
+            for name in ("node", "nodejs"):
+                full = os.path.join(directory, name)
+                if os.path.isfile(full) and os.access(full, os.X_OK):
+                    candidates.append(full)
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        menu) run_menu; exit 0 ;;
-        -a|--audio) MODE="audio"; shift ;;
-        -p|--playlist) MODE="playlist"; shift ;;
-        -f|--format) FORMAT="${2:-}"; shift 2 ;;
-        -o|--out) OUT_DIR="${2:-.}"; shift 2 ;;
-        -h|--help) usage; exit 0 ;;
-        *) URL="$1"; shift ;;
-    esac
-done
+    for path in candidates:
+        try:
+            out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=3)
+            ver_str = out.stdout.strip().lstrip("v")
+            major = int(ver_str.split(".")[0])
+            if major >= 22:
+                return path
+        except Exception:
+            continue
+    return None
 
-[[ -n "$URL" ]] || { usage; exit 1; }
-run_download
+
+def check_dependencies() -> None:
+    """
+    Run once at startup to catch missing pieces before the first download.
+    Checks for yt-dlp-ejs and Node v22+, and offers to fix what it can.
+    """
+    # 1. yt-dlp-ejs — the EJS challenge solver scripts (needed for YouTube).
+    try:
+        import importlib.util
+        if importlib.util.find_spec("yt_dlp_ejs") is None:
+            raise ImportError
+    except ImportError:
+        print("\n  WARNING: yt-dlp-ejs is not installed.")
+        print("  Without it, YouTube n-challenge solving fails and only thumbnails download.")
+        ans = input("  Install now with 'pip install \"yt-dlp[default]\"'? [Y/n] ").strip().lower()
+        if ans in ("", "y", "yes"):
+            print("  Installing yt-dlp[default]...")
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-U", "yt-dlp[default]"],
+                check=False,
+            )
+            print()
+
+    # 2. Node v22+ — required JS runtime for EJS.
+    node_path = _find_node()
+    if not node_path:
+        print("\n  WARNING: No Node.js v22+ found.")
+        print("  yt-dlp's EJS solver needs Node ≥ v22 to run n-challenge scripts.")
+        print("  Install with: nvm install 22   OR   sudo apt install nodejs")
+        print("  (Deno is also supported: https://docs.deno.com/runtime/getting_started/installation/)")
+        input("  Press Enter to continue anyway (downloads may fail)...")
+        print()
+
+
+def check_ytdlp_version() -> None:
+    try:
+        result = subprocess.run(["yt-dlp", "--version"], capture_output=True, text=True, timeout=5)
+        version_str = result.stdout.strip()
+        version_date = _version_date(version_str)
+        if version_date is None:
+            return
+        age_days = (datetime.now(timezone.utc) - version_date).days
+        if age_days > MAX_VERSION_AGE_DAYS:
+            print(f"\n  WARNING: yt-dlp v{version_str} is {age_days} days old.")
+            print("  Outdated versions often fail with YouTube's changing restrictions.")
+            ans = input("  Update now with 'pip install -U yt-dlp'? [Y/n] ").strip().lower()
+            if ans in ("", "y", "yes"):
+                print("  Updating yt-dlp + yt-dlp-ejs...")
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-U", "yt-dlp[default]"],
+                    check=False,
+                )
+                print()
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Browser detection
+# ---------------------------------------------------------------------------
+
+def _detect_installed_browsers() -> list[str]:
+    """Return browsers from SUPPORTED_BROWSERS that are present on this system."""
+    found = []
+    for b in SUPPORTED_BROWSERS:
+        binary = "google-chrome" if b == "chrome" else b
+        if shutil.which(binary) or shutil.which(b):
+            found.append(b)
+    return found
+
+
+def ask_browser_cookies() -> str | None:
+    """
+    Ask the user which browser to pull cookies from.
+    Returns a browser name for --cookies-from-browser, or None to skip.
+    YouTube in 2026 requires an authenticated session (via cookies) to avoid
+    PO Token errors and DRM-protected-format blocks.
+    """
+    available = _detect_installed_browsers()
+
+    print("\n--- Browser Cookies (YouTube Authentication) ---")
+    print("YouTube now requires an authenticated session to download most content.")
+    print("yt-dlp can read cookies directly from your browser (you stay logged in).")
+    print()
+
+    if not available:
+        print("No supported browsers detected. Proceeding without cookies.")
+        print("Downloads may fail with PO Token / DRM errors.")
+        return None
+
+    options = available + ["skip (no cookies — may fail)"]
+    for i, opt in enumerate(options, 1):
+        marker = " [recommended]" if i == 1 else ""
+        print(f"  {i}. {opt}{marker}")
+
+    while True:
+        choice = input("\nChoose browser [1]: ").strip()
+        if choice == "":
+            return available[0]
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(available):
+                return available[idx]
+            if idx == len(available):
+                return None
+        except ValueError:
+            pass
+        print("  Invalid choice, try again.")
+
+
+# ---------------------------------------------------------------------------
+# Main downloader class
+# ---------------------------------------------------------------------------
+
+class EasyDownloader:
+    def __init__(self):
+        if shutil.which("yt-dlp"):
+            self.downloader = "yt-dlp"
+        elif shutil.which("youtube-dl"):
+            self.downloader = "youtube-dl"
+        else:
+            print("Error: Neither 'yt-dlp' nor 'youtube-dl' found in your PATH.", file=sys.stderr)
+            print("Install with: pip install yt-dlp", file=sys.stderr)
+            input("Press Enter to exit...")
+            sys.exit(1)
+
+        print(f"Found downloader: {self.downloader}")
+
+        if self.downloader == "yt-dlp":
+            check_ytdlp_version()
+            check_dependencies()
+            self.browser = ask_browser_cookies()
+        else:
+            self.browser = None
+
+    def clear_screen(self):
+        os.system("cls" if os.name == "nt" else "clear")
+
+    def get_save_directory(self) -> str:
+        print("\nWhere do you want to save the files?")
+        print("Leave blank to use the current folder.")
+        path = input("Path > ").strip()
+        if path:
+            full_path = os.path.expanduser(path)
+            if not os.path.exists(full_path):
+                try:
+                    os.makedirs(full_path)
+                    return full_path
+                except Exception as e:
+                    print(f"Could not create directory: {e}", file=sys.stderr)
+                    return os.getcwd()
+            return full_path
+        return os.getcwd()
+
+    def _base_flags(self) -> list[str]:
+        """Flags applied to every download."""
+        flags = [
+            "-o", "%(title)s [%(id)s].%(ext)s",
+            "--retries", "5",
+            "--fragment-retries", "5",
+            "--file-access-retries", "3",
+        ]
+        # Node v22+ is required by yt-dlp's EJS n-challenge solver.
+        # Deno is the default but is rarely installed; node usually is.
+        node_path = _find_node()
+        if node_path:
+            flags += ["--js-runtimes", f"node:{node_path}"]
+        if self.browser:
+            flags += ["--cookies-from-browser", self.browser]
+        return flags
+
+    def run_command(self, args: list[str], cwd: str | None = None) -> None:
+        cmd = [self.downloader] + args
+        print(f"\nRunning command: {' '.join(cmd)}")
+        print("\n--- Starting Download ---")
+        try:
+            subprocess.run(cmd, cwd=cwd, check=True)
+            print("\n--- Finished Successfully! ---")
+        except subprocess.CalledProcessError as e:
+            print(f"\n--- Download ended with error (exit code {e.returncode}) ---",
+                  file=sys.stderr)
+        except FileNotFoundError:
+            print(f"\nError: Could not execute '{self.downloader}'. Is it in your PATH?",
+                  file=sys.stderr)
+
+    def menu(self) -> None:
+        while True:
+            self.clear_screen()
+            cookie_status = f"cookies: {self.browser}" if self.browser else "cookies: none (may fail)"
+            print(f"=== Easy YouTube Downloader Wrapper ({self.downloader} | {cookie_status}) ===")
+            print("1. Best Quality Video (Auto-merge best video + best audio)")
+            print("2. Audio Only (MP3 - High Quality)")
+            print("3. Download entire playlist (Best Quality)")
+            print("4. Download entire playlist (Audio Only MP3)")
+            print("5. Custom Format (Advanced users)")
+            print("C. Change browser / cookie source")
+            print("Q. Quit")
+
+            choice = input("\nSelect an option: ").strip().lower()
+
+            if choice == "q":
+                break
+
+            if choice == "c":
+                self.browser = ask_browser_cookies()
+                continue
+
+            if choice not in ("1", "2", "3", "4", "5"):
+                continue
+
+            url = input("Enter the URL: ").strip()
+            if not url:
+                continue
+
+            save_dir = self.get_save_directory()
+            base = self._base_flags()
+
+            if choice == "1":
+                args = base + ["-f", "bestvideo+bestaudio/best",
+                               "--merge-output-format", "mp4", url]
+
+            elif choice == "2":
+                args = base + ["-x", "--audio-format", "mp3", "--audio-quality", "0", url]
+
+            elif choice == "3":
+                args = base + ["--yes-playlist", "-f", "bestvideo+bestaudio/best",
+                               "--merge-output-format", "mp4", url]
+
+            elif choice == "4":
+                args = base + ["--yes-playlist", "-x", "--audio-format", "mp3",
+                               "--audio-quality", "0", url]
+
+            elif choice == "5":
+                print("\nCommon formats: 'best', 'worst', 'mp4', 'm4a'")
+                print("Specific resolution: 'bestvideo[height<=1080]+bestaudio/best'")
+                fmt = input("Enter format string: ").strip()
+                if not fmt:
+                    continue
+                args = base + ["-f", fmt, url]
+
+            self.run_command(args, cwd=save_dir)
+            input("\nPress Enter to return to menu...")
+
+
+if __name__ == "__main__":
+    try:
+        app = EasyDownloader()
+        app.menu()
+    except KeyboardInterrupt:
+        print("\nExiting...")
+        sys.exit(0)
