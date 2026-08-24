@@ -18,6 +18,7 @@ Usage examples:
   x_ctx standards --stack nextjs
   x_ctx ui
   x_ctx tracker
+  x_ctx burndown
   x_ctx feature "authentication"
   x_ctx next-feature
   x_ctx implement-next
@@ -143,6 +144,39 @@ Update this file after every meaningful implementation change.
 - Project has been initialised with x_ctx.
 """
 
+BURNDOWN_TEMPLATE = """# Burndown
+
+Track completion steps here. Keep this file procedural: what remains, what is in progress, what is blocked, and what is done.
+
+Do not duplicate product facts, architecture decisions, API details, UI requirements, or feature scope here. Those belong in the PRD, context files, and feature specs.
+
+## Current Milestone
+
+- Not selected yet.
+
+## Completion Steps
+
+- [ ] Define project overview.
+- [ ] Define architecture context.
+- [ ] Define code standards.
+- [ ] Define UI context.
+- [ ] Specify first feature.
+- [ ] Implement first feature slice.
+- [ ] Validate and ship first slice.
+
+## In Progress
+
+- None yet.
+
+## Blocked
+
+- None yet.
+
+## Done
+
+- None yet.
+"""
+
 AGENT_ENTRYPOINT_TEMPLATE = """# Project Context
 
 Before implementing, read the following files in order:
@@ -152,8 +186,10 @@ Before implementing, read the following files in order:
 3. `{context_dir}/ui-context.md` - theme, colors, typography, and component conventions
 4. `{context_dir}/code-standards.md` - implementation rules and conventions
 5. `{context_dir}/progress-tracker.md` - current phase, completed work, open questions, and next steps
+6. `{context_dir}/burndown.md` - procedural completion steps, current blockers, and done list
 
 Update `{context_dir}/progress-tracker.md` after each meaningful implementation change.
+Update `{context_dir}/burndown.md` when a planned step starts, blocks, or completes.
 
 If implementation changes architecture, scope, UI direction, or standards, update the relevant context file before continuing.
 """
@@ -165,6 +201,7 @@ alwaysApply: true
 
 Before implementing, read the project context files in `{context_dir}/`.
 Treat those files as the source of truth for product intent, architecture, standards, UI decisions, and progress.
+Use `{context_dir}/burndown.md` only for procedural step tracking; do not treat it as product or architecture fact.
 """
 
 
@@ -918,6 +955,67 @@ Write concise notes needed to resume work next time:
 {prd}
 --- PRD END ---
 """,
+    "burndown": """{base}
+
+Target file: `context/burndown.md`
+
+Create a procedural burndown file for this project.
+
+The burndown should:
+- itemise the path to completion
+- keep each item small enough for one focused AI coding session
+- make status easy to update as work progresses
+- separate planned work, active work, blockers, and completed work
+- avoid duplicating factual product, architecture, UI, API, or data details
+- reference feature files as the place where factual implementation detail belongs
+
+Important boundaries:
+- Do not repeat PRD facts except as short labels needed to identify work.
+- Do not invent feature details that should be decided in `context/features/*.md`.
+- Do not record architecture decisions here; those belong in `context/architecture.md` or `context/progress-tracker.md`.
+- Do not use this file as a second PRD.
+
+The file must use this structure:
+
+# Burndown
+
+Track completion steps here. Keep this file procedural: what remains, what is in progress, what is blocked, and what is done.
+
+Do not duplicate product facts, architecture decisions, API details, UI requirements, or feature scope here. Those belong in the PRD, context files, and feature specs.
+
+## Current Milestone
+
+State the current milestone or "Not selected yet."
+
+## Completion Steps
+
+Use checkbox items grouped by milestone or slice.
+Each item should be action-oriented and small enough for one focused implementation session.
+If a step needs factual detail, reference the relevant feature file path instead of restating the facts.
+
+Example:
+- [ ] M0: Create project foundation (`context/features/project-foundation.md`)
+- [ ] M1: Implement sign-in entry point (`context/features/authentication.md`)
+
+## In Progress
+
+List active procedural work only.
+Use "None yet" if empty.
+
+## Blocked
+
+List blocked steps and the specific decision or dependency needed to unblock them.
+Use "None yet" if empty.
+
+## Done
+
+List completed steps with concise labels.
+Use "None yet" if empty.
+
+--- PRD START ---
+{prd}
+--- PRD END ---
+""",
     "feature": """{base}
 
 Target file: `context/features/{feature_slug}.md`
@@ -1274,6 +1372,14 @@ class AppPaths:
     prd: Path
     context: Path
     features: Path
+    burndown: Path
+
+
+@dataclass
+class ClipboardResult:
+    success: bool
+    backend: str | None
+    details: list[str]
 
 
 def get_paths(prd_name: str = DEFAULT_PRD) -> AppPaths:
@@ -1284,6 +1390,7 @@ def get_paths(prd_name: str = DEFAULT_PRD) -> AppPaths:
         prd=root / prd_name,
         context=context,
         features=context / FEATURES_DIR,
+        burndown=context / "burndown.md",
     )
 
 
@@ -1329,14 +1436,15 @@ def get_stack_rules(stack: str | None) -> tuple[str, str]:
     return key, rules.strip()
 
 
-def copy_to_clipboard(text: str) -> bool:
+def copy_to_clipboard(text: str) -> ClipboardResult:
     """
     Try to copy to clipboard using common platform tools.
-    Returns True if successful, False otherwise.
+    Returns diagnostic detail so callers can report useful failures.
     """
     system = platform.system().lower()
 
     commands: list[list[str]] = []
+    details: list[str] = []
 
     if system == "darwin":
         commands.append(["pbcopy"])
@@ -1351,6 +1459,7 @@ def copy_to_clipboard(text: str) -> bool:
 
     for cmd in commands:
         if shutil.which(cmd[0]) is None:
+            details.append(f"{cmd[0]}: not found")
             continue
         try:
             subprocess.run(
@@ -1360,11 +1469,21 @@ def copy_to_clipboard(text: str) -> bool:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            return True
-        except Exception:
+            return ClipboardResult(True, " ".join(cmd), details)
+        except Exception as exc:
+            details.append(f"{' '.join(cmd)}: failed ({exc})")
             continue
 
-    return False
+    return ClipboardResult(False, None, details)
+
+
+def should_preview(args: argparse.Namespace) -> bool:
+    """Bare commands print content; targeted outputs stay quiet unless --preview is set."""
+    if getattr(args, "no_preview", False):
+        return False
+    if getattr(args, "preview", False):
+        return True
+    return not (getattr(args, "copy", False) or getattr(args, "out", None))
 
 
 def output_prompt(
@@ -1382,16 +1501,73 @@ def output_prompt(
     if out_file:
         out_file.parent.mkdir(parents=True, exist_ok=True)
         out_file.write_text(prompt, encoding="utf-8")
-        print(f"[{APP_NAME}] Wrote prompt: {out_file}", file=sys.stderr)
+        print(f"[{APP_NAME}] Wrote output: {out_file} ({len(prompt):,} chars)", file=sys.stderr)
 
     if copy:
-        if copy_to_clipboard(prompt):
-            print(f"[{APP_NAME}] Copied prompt to clipboard.", file=sys.stderr)
+        result = copy_to_clipboard(prompt)
+        if result.success:
+            print(
+                f"[{APP_NAME}] Copied output to clipboard via {result.backend} ({len(prompt):,} chars).",
+                file=sys.stderr,
+            )
         else:
             print(f"[{APP_NAME}] Clipboard unavailable.", file=sys.stderr)
+            for detail in result.details:
+                print(f"[{APP_NAME}]   {detail}", file=sys.stderr)
 
 
-def compile_context(paths: AppPaths) -> str:
+def _rel(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _context_files(paths: AppPaths) -> list[tuple[str, Path]]:
+    files: list[tuple[str, Path]] = [
+        ("PRD", paths.prd),
+        ("Project Overview", paths.context / "project-overview.md"),
+        ("Architecture", paths.context / "architecture.md"),
+        ("Code Standards", paths.context / "code-standards.md"),
+        ("UI Context", paths.context / "ui-context.md"),
+        ("Progress Tracker", paths.context / "progress-tracker.md"),
+        ("Burndown", paths.burndown),
+    ]
+
+    feature_files = sorted(paths.features.glob("*.md")) if paths.features.exists() else []
+    for feature_file in feature_files:
+        files.append((f"Feature File: {feature_file.name}", feature_file))
+
+    return files
+
+
+def compile_context(paths: AppPaths, *, inline: bool = False) -> str:
+    existing = [(title, path) for title, path in _context_files(paths) if path.exists()]
+
+    if not existing:
+        die("No context files found. Run `x_ctx init` and add a PRD first.")
+
+    if not inline:
+        lines = [
+            "# Project Context References",
+            "",
+            "Read these files directly. Treat them as the source of truth instead of relying on copied inline content.",
+            "",
+            "## Source Files",
+            "",
+        ]
+        for title, path in existing:
+            lines.append(f"- `{_rel(path, paths.root)}` - {title}")
+        lines.extend([
+            "",
+            "## Instructions",
+            "",
+            "- Use `context/burndown.md` for procedural step tracking only.",
+            "- Do not copy facts from `context/burndown.md` into feature specs or architecture context.",
+            "- If a fact is missing, read the relevant source file before deciding.",
+        ])
+        return "\n".join(lines)
+
     sections: list[tuple[str, Path]] = [
         ("PRD", paths.prd),
         ("Project Overview", paths.context / "project-overview.md"),
@@ -1399,6 +1575,7 @@ def compile_context(paths: AppPaths) -> str:
         ("Code Standards", paths.context / "code-standards.md"),
         ("UI Context", paths.context / "ui-context.md"),
         ("Progress Tracker", paths.context / "progress-tracker.md"),
+        ("Burndown", paths.burndown),
     ]
 
     chunks: list[str] = []
@@ -1413,9 +1590,6 @@ def compile_context(paths: AppPaths) -> str:
         content = read_file(feature_file, required=False).strip()
         if content:
             chunks.append(f"# Feature File: {feature_file.name}\n\n{content}")
-
-    if not chunks:
-        die("No context files found. Run `x_ctx init` and add a PRD first.")
 
     return "\n\n---\n\n".join(chunks)
 
@@ -1464,6 +1638,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     if write_file_if_missing(paths.context / "progress-tracker.md", PROGRESS_TRACKER_TEMPLATE):
         created.append(str(paths.context / "progress-tracker.md"))
 
+    if write_file_if_missing(paths.burndown, BURNDOWN_TEMPLATE):
+        created.append(str(paths.burndown))
+
     placeholder = paths.features / ".gitkeep"
     if write_file_if_missing(placeholder, ""):
         created.append(str(placeholder))
@@ -1495,7 +1672,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     print("\nNext:")
     print(f"  1. Edit {paths.prd.name}")
     print("  2. Run: x_ctx overview")
-    print("  3. Paste the generated prompt into your AI tool")
+    print("  3. Run prompts with --copy or --out to avoid terminal scrollback noise")
 
 
 def cmd_prompt(kind: str) -> Callable[[argparse.Namespace], None]:
@@ -1507,7 +1684,7 @@ def cmd_prompt(kind: str) -> Callable[[argparse.Namespace], None]:
             stack=getattr(args, "stack", None),
             style=getattr(args, "style", None),
         )
-        output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+        output_prompt(prompt, copy=args.copy, out_file=args.out, preview=should_preview(args))
     return run
 
 
@@ -1518,34 +1695,34 @@ def cmd_feature(args: argparse.Namespace) -> None:
         paths=paths,
         feature_name=args.name,
     )
-    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 def cmd_compile_context(args: argparse.Namespace) -> None:
     paths = get_paths(args.prd)
-    compiled = compile_context(paths)
-    output_prompt(compiled, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    compiled = compile_context(paths, inline=args.inline)
+    output_prompt(compiled, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 def cmd_next_feature(args: argparse.Namespace) -> None:
     paths = get_paths(args.prd)
-    compiled = compile_context(paths)
+    compiled = compile_context(paths, inline=args.inline)
     prompt = NEXT_FEATURE_TEMPLATE.format(compiled_context=compiled.strip())
-    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 def cmd_implement_next(args: argparse.Namespace) -> None:
     paths = get_paths(args.prd)
-    compiled = compile_context(paths)
+    compiled = compile_context(paths, inline=args.inline)
     prompt = IMPLEMENT_NEXT_TEMPLATE.format(compiled_context=compiled.strip())
-    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 def cmd_session(args: argparse.Namespace) -> None:
     paths = get_paths(args.prd)
-    compiled = compile_context(paths)
+    compiled = compile_context(paths, inline=args.inline)
     prompt = SESSION_TEMPLATE.format(compiled_context=compiled.strip())
-    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 def cmd_list_stacks(args: argparse.Namespace) -> None:
@@ -1565,12 +1742,12 @@ def cmd_ship(args: argparse.Namespace) -> None:
         title=args.title,
         body_section=body_section,
     )
-    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 def cmd_pr_approved(args: argparse.Namespace) -> None:
     prompt = PR_APPROVED_TEMPLATE.format(pr_number=args.pr_number)
-    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 def cmd_pr_comments(args: argparse.Namespace) -> None:
@@ -1583,11 +1760,11 @@ def cmd_pr_comments(args: argparse.Namespace) -> None:
         pr_number=args.pr_number,
         branch_instruction=branch_instruction,
     )
-    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    output_prompt(prompt, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 def cmd_workflow(args: argparse.Namespace) -> None:
-    output_prompt(WORKFLOW_GUIDE_TEMPLATE, copy=args.copy, out_file=args.out, preview=not args.no_preview)
+    output_prompt(WORKFLOW_GUIDE_TEMPLATE, copy=args.copy, out_file=args.out, preview=should_preview(args))
 
 
 # ---------------------------------------------------------------------------
@@ -1597,7 +1774,24 @@ def cmd_workflow(args: argparse.Namespace) -> None:
 def add_output_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-c", "--copy", action="store_true", help="Copy the generated output to the clipboard.")
     parser.add_argument("--out", type=Path, help="Write the generated output to this file.")
-    parser.add_argument("--no-preview", action="store_true", help="Do not print generated output.")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Print generated output even when using --copy or --out.",
+    )
+    parser.add_argument(
+        "--no-preview",
+        action="store_true",
+        help="Do not print generated output. Kept for existing scripts.",
+    )
+
+
+def add_context_mode_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--inline",
+        action="store_true",
+        help="Embed full context file contents instead of listing file references.",
+    )
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
@@ -1632,7 +1826,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.set_defaults(func=cmd_init)
 
-    for name in ["overview", "tracker"]:
+    for name in ["overview", "tracker", "burndown"]:
         p = sub.add_parser(name, help=f"Generate prompt for {name}.")
         add_common_args(p)
         p.set_defaults(func=cmd_prompt(name))
@@ -1659,18 +1853,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     compile_cmd = sub.add_parser("compile-context", help="Print/copy compiled project context.")
     add_common_args(compile_cmd)
+    add_context_mode_args(compile_cmd)
     compile_cmd.set_defaults(func=cmd_compile_context)
 
     next_feature = sub.add_parser("next-feature", help="Generate prompt for the next feature spec.")
     add_common_args(next_feature)
+    add_context_mode_args(next_feature)
     next_feature.set_defaults(func=cmd_next_feature)
 
     implement_next = sub.add_parser("implement-next", help="Generate coding-agent prompt for the next implementation step.")
     add_common_args(implement_next)
+    add_context_mode_args(implement_next)
     implement_next.set_defaults(func=cmd_implement_next)
 
     session = sub.add_parser("session", help="Generate a session-start prompt.")
     add_common_args(session)
+    add_context_mode_args(session)
     session.set_defaults(func=cmd_session)
 
     ship = sub.add_parser("ship", help="Generate prompt to commit, branch, push, and open a PR.")
