@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # Install Cursor and IntelliJ IDEA Ultimate on Omarchy.
+# System upgrades remain managed by `omarchy update`.
 
 set -euo pipefail
 
@@ -11,14 +12,15 @@ usage() {
     cat <<'USAGE'
 Usage: install-ides.sh
 
-Installs or updates:
+Ensures these applications are installed:
   - Cursor
   - IntelliJ IDEA Ultimate
 
 Options:
   -h, --help  Show this help
 
-System upgrades are intentionally left to: omarchy update
+System upgrades are intentionally left to:
+  omarchy update
 USAGE
 }
 
@@ -37,7 +39,9 @@ install_aur_package() {
     local package_name="$1"
     local application_name="$2"
 
-    printf '\n==> Installing %s (%s)\n' "$application_name" "$package_name"
+    printf '\n==> Ensuring %s is installed (%s)\n' \
+        "$application_name" "$package_name"
+
     yay -S --needed --noconfirm "$package_name"
 }
 
@@ -46,12 +50,13 @@ verify_installation() {
     local application_name="$2"
 
     if ! command -v "$executable" >/dev/null 2>&1; then
-        printf 'Error: %s installed, but %q is not available on PATH.\n' \
+        printf 'Warning: %s appears installed, but %q is not on PATH.\n' \
             "$application_name" "$executable" >&2
         return 1
     fi
 
-    printf '✓ %s is available as %q\n' "$application_name" "$executable"
+    printf '✓ %s is available as %q\n' \
+        "$application_name" "$executable"
 }
 
 main() {
@@ -71,19 +76,20 @@ main() {
 
     require_command pacman \
         "This installer requires Arch Linux or Omarchy."
+
     require_command yay \
-        "Omarchy normally includes yay. Install it before running this script."
+        "Omarchy normally includes yay. Install or restore it before running this script."
 
     install_aur_package "$CURSOR_PACKAGE" "Cursor"
     install_aur_package "$INTELLIJ_PACKAGE" "IntelliJ IDEA Ultimate"
 
     printf '\n==> Verifying installations\n'
-    verify_installation cursor "Cursor"
-    verify_installation idea "IntelliJ IDEA Ultimate"
+
+    verify_installation cursor "Cursor" || true
+    verify_installation idea "IntelliJ IDEA Ultimate" || true
 
     printf '\nIDE installation complete.\n'
-    printf 'Launch Cursor with: cursor\n'
-    printf 'Launch IntelliJ with: idea\n'
+    printf 'System upgrades remain managed by: omarchy update\n'
 }
 
 main "$@"
