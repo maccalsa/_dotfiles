@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Re-attach the personal tmux overlay after Omarchy overwrites tmux.conf.
+
+set -euo pipefail
+
+conf="${HOME}/.config/tmux/tmux.conf"
+line='source-file -q ~/.config/tmux/tmux.conf.local'
+
+[[ -f "$conf" ]] || exit 0
+grep -qxF "$line" "$conf" && exit 0
+
+if ! printf '\n%s\n' "$line" >>"$conf"; then
+  printf 'ensure-tmux-overlay: could not append source-file to %s\n' "$conf" >&2
+  exit 0
+fi

@@ -2,6 +2,47 @@
 
 This guide assumes Omarchy's existing Neovim setup is already using **Lazy.nvim** and **Mason**. The aim is to extend what Omarchy provides rather than replace the whole configuration.
 
+---
+
+## Stow overlay
+
+Omarchy already owns the desktop, LazyVim, tmux, and `~/.config/git/config`. Personal extras live in `arch/stow/` and are applied with GNU Stow. They add files Omarchy does not ship; they do not replace `init.lua`, `theme.lua`, `tmux.conf`, or the Omarchy git config.
+
+Packages:
+
+| Package | What it adds | What it leaves alone |
+| --- | --- | --- |
+| `git` | `~/.gitconfig` extra aliases, identity, `main` as default branch | `~/.config/git/config` |
+| `nvim` | `lua/plugins/local-*.lua` plus language extras merged into `lazyvim.json` | LazyVim, theme hot-reload, Omarchy plugin files |
+| `tmux` | `tmux.conf.local` plus a post-update hook that re-sources it | Omarchy prefix, theme, and keybinds |
+
+Install stow if needed and apply:
+
+```bash
+./arch/omarchy/apply-stow.sh
+```
+
+Dry-run or remove:
+
+```bash
+./arch/omarchy/apply-stow.sh --dry-run
+./arch/omarchy/apply-stow.sh --delete
+```
+
+`apply-stow.sh` also:
+
+- installs `stow` via `omarchy pkg add stow` when missing
+- takes ownership of root-owned trees under `~/.config/nvim`, `tmux`, and `git` so user-level stow can write
+- replaces the Ubuntu `~/.gitconfig` symlink if it still points at `stow/git/`
+- appends `source-file -q ~/.config/tmux/tmux.conf.local` to Omarchy's tmux.conf
+- merges language extras into `~/.config/nvim/lazyvim.json` (the LazyVim-supported place; extras must not be imported from `lua/plugins/`)
+
+After `omarchy refresh tmux`, re-run `apply-stow.sh` (or wait for the post-update hook) so the source-file line comes back.
+
+Do not stow the Ubuntu packages (`alacritty`, `zshrc`, kickstart nvim) onto Omarchy.
+
+---
+
 Languages covered:
 
 - Odin

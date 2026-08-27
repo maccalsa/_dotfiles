@@ -108,6 +108,11 @@ run_check() {
   return 1
 }
 
+SHELL_RC="$HOME/.zshrc"
+if [[ "${SHELL:-}" == *bash ]]; then
+  SHELL_RC="$HOME/.bashrc"
+fi
+
 # ---------------------------------------------------------------------------
 # Preflight
 # ---------------------------------------------------------------------------
@@ -152,8 +157,6 @@ PACMAN_PACKAGES=(
   openssh
   gnupg
   pass
-  go
-  gopls
   clang
   lld
   llvm
@@ -165,6 +168,37 @@ PACMAN_PACKAGES=(
 for package in "${PACMAN_PACKAGES[@]}"; do
   install_pacman_package "$package" || true
 done
+
+# ---------------------------------------------------------------------------
+# Go
+# ---------------------------------------------------------------------------
+
+section "Installing Go"
+
+if have go; then
+  ok "Go already installed ($(go version 2>/dev/null | head -n 1))"
+elif install_pacman_package go; then
+  :
+else
+  fail "Go is not installed"
+  warn "Install manually with: sudo pacman -S --needed go"
+fi
+
+if have gopls; then
+  ok "gopls already installed"
+else
+  install_pacman_package gopls || true
+fi
+
+if have go; then
+  mkdir -p "$HOME/go/bin"
+  append_once 'export PATH="$PATH:$HOME/go/bin"' "$SHELL_RC"
+  export PATH="$PATH:$HOME/go/bin"
+  ok "Go bin path configured in $SHELL_RC"
+  run_check "go version" go version
+else
+  fail "Go executable is unavailable"
+fi
 
 # Odin package naming/repository availability can vary over time.
 section "Installing Odin"
@@ -235,11 +269,6 @@ if have gpg; then
   ok "Configured GPG agent caching"
 else
   fail "GPG is missing; pass decryption will not work"
-fi
-
-SHELL_RC="$HOME/.zshrc"
-if [[ "${SHELL:-}" == *bash ]]; then
-  SHELL_RC="$HOME/.bashrc"
 fi
 
 append_once 'export GPG_TTY=$(tty)' "$SHELL_RC"

@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 
-# Install Cursor and IntelliJ IDEA Ultimate on Omarchy.
+# Install IntelliJ IDEA Ultimate on Omarchy.
 # System upgrades remain managed by `omarchy update`.
 
 set -euo pipefail
 
-readonly CURSOR_PACKAGE="cursor-bin"
 readonly INTELLIJ_PACKAGE="intellij-idea-ultimate-edition"
 
 usage() {
     cat <<'USAGE'
-Usage: install-ides.sh
+Usage: install-intellij.sh
 
-Ensures these applications are installed:
-  - Cursor
-  - IntelliJ IDEA Ultimate
+Ensures IntelliJ IDEA Ultimate is installed.
 
 Options:
   -h, --help  Show this help
@@ -33,30 +30,6 @@ require_command() {
         printf '%s\n' "$install_hint" >&2
         exit 1
     fi
-}
-
-install_aur_package() {
-    local package_name="$1"
-    local application_name="$2"
-
-    printf '\n==> Ensuring %s is installed (%s)\n' \
-        "$application_name" "$package_name"
-
-    yay -S --needed --noconfirm "$package_name"
-}
-
-verify_installation() {
-    local executable="$1"
-    local application_name="$2"
-
-    if ! command -v "$executable" >/dev/null 2>&1; then
-        printf 'Warning: %s appears installed, but %q is not on PATH.\n' \
-            "$application_name" "$executable" >&2
-        return 1
-    fi
-
-    printf '✓ %s is available as %q\n' \
-        "$application_name" "$executable"
 }
 
 main() {
@@ -80,15 +53,18 @@ main() {
     require_command yay \
         "Omarchy normally includes yay. Install or restore it before running this script."
 
-    install_aur_package "$CURSOR_PACKAGE" "Cursor"
-    install_aur_package "$INTELLIJ_PACKAGE" "IntelliJ IDEA Ultimate"
+    printf '\n==> Ensuring IntelliJ IDEA Ultimate is installed (%s)\n' \
+        "$INTELLIJ_PACKAGE"
+    yay -S --needed --noconfirm "$INTELLIJ_PACKAGE"
 
-    printf '\n==> Verifying installations\n'
+    printf '\n==> Verifying installation\n'
+    if ! command -v idea >/dev/null 2>&1; then
+        printf 'Warning: IntelliJ IDEA Ultimate appears installed, but %q is not on PATH.\n' idea >&2
+    else
+        printf '✓ IntelliJ IDEA Ultimate is available as %q\n' idea
+    fi
 
-    verify_installation cursor "Cursor" || true
-    verify_installation idea "IntelliJ IDEA Ultimate" || true
-
-    printf '\nIDE installation complete.\n'
+    printf '\nIntelliJ installation complete.\n'
     printf 'System upgrades remain managed by: omarchy update\n'
 }
 

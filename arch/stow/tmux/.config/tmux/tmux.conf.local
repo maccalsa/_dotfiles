@@ -1,0 +1,5 @@
+# Personal tmux overlay. Sourced from Omarchy's ~/.config/tmux/tmux.conf.
+# Do not change prefix, status theme, or rebind r (Omarchy uses r to rename).
+
+bind-key '|' split-window -h -c "#{pane_current_path}"
+bind-key '-' split-window -v -c "#{pane_current_path}"

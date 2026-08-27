@@ -1,0 +1,46 @@
+# Overlay on Omarchy's ~/.config/git/config.
+# Git reads the Omarchy file first, then this file. Omarchy already defines
+# st/ci/br/co and pull.rebase; only extras belong here.
+
+[alias]
+    df = diff
+    lg = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(bold yellow)%d%C(reset)'
+    last = log -1 HEAD
+    unstage = reset HEAD --
+    amend = commit --amend
+    cm = !git add -A && git commit -m
+    save = !git add -A && git commit -m 'SAVEPOINT'
+    wip = !git add -A && git commit -m 'WIP'
+    undo = reset HEAD~1 --mixed
+    rollback = reset --hard
+    l5 = log --oneline -5
+    l10 = log --oneline -10
+    pf = push --force-with-lease
+    aa = add --all
+    ds = diff --staged
+    patch = add -p
+    sw = switch
+    sp = stash push
+    pop = stash pop
+    recent-branches = branch --sort=-committerdate
+    prune = remote prune origin
+
+[include]
+    path = ~/.private_gitconfig
+
+[user]
+    name = Stuart MacCallum
+    email = maccalsa@googlemail.com
+
+[init]
+    defaultBranch = main
+
+[core]
+    editor = nvim
+
+[credential]
+    helper = cache
+
+[credential "https://github.com"]
+    helper =
+    helper = !gh auth git-credential

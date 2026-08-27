@@ -2,6 +2,9 @@
 
 GNU Stow symlinks files from `stow/<package>` into `$HOME`.
 
+On Omarchy, do not use this Ubuntu package set. Use `arch/stow` and
+`./arch/omarchy/apply-stow.sh` instead. See [arch/omarchy/omarchy.md](../arch/omarchy/omarchy.md).
+
 Use this form from the repo root:
 
 ```bash
