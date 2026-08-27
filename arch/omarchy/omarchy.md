@@ -41,6 +41,10 @@ After `omarchy refresh tmux`, re-run `apply-stow.sh` (or wait for the post-updat
 
 Do not stow the Ubuntu packages (`alacritty`, `zshrc`, kickstart nvim) onto Omarchy.
 
+IntelliJ navigation, format, errors, docs, and the move-a-function workflow: [intellij-shortcuts.md](intellij-shortcuts.md). Install with `./arch/omarchy/install-intellij.sh`.
+
+Neovim (this LazyVim overlay): [nvim-shortcuts.md](nvim-shortcuts.md).
+
 ---
 
 Languages covered:
