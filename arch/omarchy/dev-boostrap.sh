@@ -21,6 +21,8 @@
 set -uo pipefail
 
 JAVA_CANDIDATE="${JAVA_CANDIDATE:-25-tem}"
+# Kotlin 2.2 cannot emit JVM 25 bytecode; 2.3+ can. Keep this in step with SDKMAN's kotlinc.
+KOTLIN_PLUGIN_VERSION="${KOTLIN_PLUGIN_VERSION:-2.4.10}"
 NODE_VERSION="${NODE_VERSION:-lts/*}"
 SMOKE_ROOT="${SMOKE_ROOT:-$HOME/code/smoke-tests}"
 
@@ -69,6 +71,85 @@ append_once() {
   fi
 }
 
+# SDKMAN is not nounset-safe: init reads unset env vars, and commands such as
+# `sdk install java <version>` assign optional `$3` (`folder="$3"`).
+without_nounset() {
+  local rc
+  set +u
+  "$@"
+  rc=$?
+  set -u
+  return "$rc"
+}
+
+source_sdkman() {
+  local init="${SDKMAN_DIR}/bin/sdkman-init.sh"
+  [[ -s "$init" ]] || return 1
+  # shellcheck disable=SC1090
+  without_nounset source "$init"
+}
+
+sdkman_nounset_safe_init_block() {
+  cat <<'EOF'
+if [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]]; then
+    set +u
+    source "$HOME/.sdkman/bin/sdkman-init.sh"
+    set -u
+fi
+EOF
+}
+
+# The SDKMAN installer appends a one-liner of the form:
+#   [[ -s ".../sdkman-init.sh" ]] && source ".../sdkman-init.sh"
+# Replace that with a nounset-safe wrapper. Skip files that already use it.
+patch_sdkman_init_in_file() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+
+  local tmp
+  tmp="$(mktemp)"
+  local replaced=0
+  local already_safe=0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" == *sdkman-init.sh* && "$line" == *'&&'* ]]; then
+      if ((replaced == 0)); then
+        sdkman_nounset_safe_init_block >> "$tmp"
+        replaced=1
+      fi
+      continue
+    fi
+    if [[ "$line" == *sdkman-init.sh* ]]; then
+      already_safe=1
+    fi
+    printf '%s\n' "$line" >> "$tmp"
+  done < "$file"
+
+  if ((replaced == 0 && already_safe == 0)); then
+    sdkman_nounset_safe_init_block >> "$tmp"
+    replaced=1
+  fi
+
+  if ((replaced == 1)); then
+    mv "$tmp" "$file"
+    ok "SDKMAN init in $file is nounset-safe"
+  else
+    rm -f "$tmp"
+  fi
+}
+
+patch_sdkman_shell_rcs() {
+  local rc
+  local seen=":"
+
+  for rc in "$SHELL_RC" "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [[ -f "$rc" ]] || continue
+    [[ "$seen" == *":$rc:"* ]] && continue
+    seen+="$rc:"
+    patch_sdkman_init_in_file "$rc"
+  done
+}
+
 pacman_has_package() {
   pacman -Si "$1" >/dev/null 2>&1
 }
@@ -114,33 +195,6 @@ if [[ "${SHELL:-}" == *bash ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Preflight
-# ---------------------------------------------------------------------------
-
-section "Preflight"
-
-if ! have pacman; then
-  printf '%bERROR:%b This script expects Arch Linux / Omarchy and could not find pacman.\n' "$red" "$reset"
-  exit 1
-fi
-
-if ! have sudo; then
-  printf '%bERROR:%b sudo is required.\n' "$red" "$reset"
-  exit 1
-fi
-
-ok "Running on a pacman-based system"
-
-section "Refreshing package databases and upgrading system"
-
-if sudo pacman -Syu --noconfirm; then
-  ok "System upgrade completed"
-else
-  fail "System upgrade failed"
-  warn "Continuing, but package installs may also fail until pacman is fixed"
-fi
-
-# ---------------------------------------------------------------------------
 # Arch packages
 # ---------------------------------------------------------------------------
 
@@ -148,26 +202,45 @@ section "Installing base software"
 
 PACMAN_PACKAGES=(
   base-devel
-  git
-  curl
   wget
-  unzip
-  zip
-  tar
-  openssh
-  gnupg
-  pass
   clang
   lld
   llvm
-  docker
-  docker-compose
-  neovim
 )
 
 for package in "${PACMAN_PACKAGES[@]}"; do
   install_pacman_package "$package" || true
 done
+
+# ---------------------------------------------------------------------------
+# Docker
+# ---------------------------------------------------------------------------
+# Omarchy 4.0.0 put the install user in the docker group, so `docker ps` worked
+# on a fresh install. 4.0.1 made that opt-in (migration 1787580187 runs
+# `gpasswd -d "$USER" docker`). Restore the 4.0.0 workstation behaviour.
+
+section "Configuring Docker"
+
+if have docker; then
+  if sudo systemctl enable --now docker.socket; then
+    ok "Docker socket enabled"
+  else
+    warn "Docker is installed but docker.socket could not be enabled"
+  fi
+
+  if getent group docker | grep -qw "$USER"; then
+    ok "$USER is already in the docker group"
+  else
+    if sudo usermod -aG docker "$USER"; then
+      ok "Added $USER to the docker group"
+      warn "Reboot before expecting passwordless Docker in this session (group membership is only picked up at login)"
+    else
+      fail "Could not add $USER to the docker group"
+    fi
+  fi
+else
+  fail "Docker executable is unavailable"
+fi
 
 # ---------------------------------------------------------------------------
 # Go
@@ -223,128 +296,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Docker
-# ---------------------------------------------------------------------------
-
-section "Configuring Docker"
-
-if have docker; then
-  if sudo systemctl enable --now docker; then
-    ok "Docker service enabled and started"
-  else
-    warn "Docker is installed but the service could not be enabled/started"
-  fi
-
-  if groups "$USER" | grep -qw docker; then
-    ok "$USER is already in the docker group"
-  else
-    if sudo usermod -aG docker "$USER"; then
-      ok "Added $USER to the docker group"
-      warn "Log out and back in before expecting passwordless Docker access"
-    else
-      fail "Could not add $USER to the docker group"
-    fi
-  fi
-else
-  fail "Docker executable is unavailable"
-fi
-
-# ---------------------------------------------------------------------------
-# GPG / pass
-# ---------------------------------------------------------------------------
-
-section "Configuring GPG and pass"
-
-if have gpg; then
-  mkdir -p "$HOME/.gnupg"
-  chmod 700 "$HOME/.gnupg"
-
-  GPG_AGENT_CONF="$HOME/.gnupg/gpg-agent.conf"
-  append_once "default-cache-ttl 3600" "$GPG_AGENT_CONF"
-  append_once "max-cache-ttl 86400" "$GPG_AGENT_CONF"
-
-  gpgconf --kill gpg-agent >/dev/null 2>&1 || true
-  gpgconf --launch gpg-agent >/dev/null 2>&1 || true
-
-  ok "Configured GPG agent caching"
-else
-  fail "GPG is missing; pass decryption will not work"
-fi
-
-append_once 'export GPG_TTY=$(tty)' "$SHELL_RC"
-ok "Configured GPG_TTY in $SHELL_RC"
-
-if have pass; then
-  ok "pass is installed"
-else
-  fail "pass is not installed"
-fi
-
-# ---------------------------------------------------------------------------
-# SDKMAN / JVM toolchain
-# ---------------------------------------------------------------------------
-
-section "Installing SDKMAN"
-
-export SDKMAN_DIR="${SDKMAN_DIR:-$HOME/.sdkman}"
-
-if [[ ! -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]]; then
-  if have curl && curl -s "https://get.sdkman.io" | bash; then
-    ok "Installed SDKMAN"
-  else
-    fail "Could not install SDKMAN"
-  fi
-else
-  ok "SDKMAN already installed"
-fi
-
-if [[ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]]; then
-  # shellcheck disable=SC1090
-  source "$SDKMAN_DIR/bin/sdkman-init.sh"
-
-  section "Installing Java 25"
-
-  if sdk current java 2>/dev/null | grep -q "$JAVA_CANDIDATE"; then
-    ok "Java $JAVA_CANDIDATE already active"
-  else
-    if sdk install java "$JAVA_CANDIDATE"; then
-      ok "Installed Java $JAVA_CANDIDATE"
-    else
-      fail "Could not install Java candidate '$JAVA_CANDIDATE'"
-      warn "Run 'sdk list java' and choose an available Java 25 candidate"
-    fi
-  fi
-
-  section "Installing Gradle"
-
-  if have gradle; then
-    ok "Gradle already available"
-  elif sdk install gradle; then
-    ok "Installed Gradle"
-  else
-    fail "Could not install Gradle through SDKMAN"
-  fi
-
-  section "Installing Kotlin CLI"
-
-  if have kotlinc; then
-    ok "Kotlin compiler already available"
-  elif sdk install kotlin; then
-    ok "Installed Kotlin through SDKMAN"
-  else
-    fail "Could not install Kotlin through SDKMAN"
-  fi
-else
-  fail "SDKMAN is unavailable, so Java/Gradle/Kotlin SDKMAN installation was skipped"
-fi
-
-# ---------------------------------------------------------------------------
 # NVM / Node
 # ---------------------------------------------------------------------------
 
 section "Installing NVM and Node"
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+mkdir -p "$NVM_DIR"
 
 if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
   if have curl; then
@@ -416,6 +374,65 @@ fi
 # Prefer rustup's rust-analyzer if available.
 if have rustup; then
   rustup component add rust-analyzer >/dev/null 2>&1 || true
+fi
+
+
+# ---------------------------------------------------------------------------
+# SDKMAN / JVM toolchain
+# ---------------------------------------------------------------------------
+
+section "Installing SDKMAN"
+
+export SDKMAN_DIR="${SDKMAN_DIR:-$HOME/.sdkman}"
+
+if [[ ! -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]]; then
+  if have curl && curl -s "https://get.sdkman.io" | bash; then
+    ok "Installed SDKMAN"
+  else
+    fail "Could not install SDKMAN"
+  fi
+else
+  ok "SDKMAN already installed"
+fi
+
+if [[ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]]; then
+  patch_sdkman_shell_rcs
+  source_sdkman
+
+  section "Installing Java 25"
+
+  if without_nounset sdk current java 2>/dev/null | grep -q "$JAVA_CANDIDATE"; then
+    ok "Java $JAVA_CANDIDATE already active"
+  else
+    if without_nounset sdk install java "$JAVA_CANDIDATE"; then
+      ok "Installed Java $JAVA_CANDIDATE"
+    else
+      fail "Could not install Java candidate '$JAVA_CANDIDATE'"
+      warn "Run 'sdk list java' and choose an available Java 25 candidate"
+    fi
+  fi
+
+  section "Installing Gradle"
+
+  if have gradle; then
+    ok "Gradle already available"
+  elif without_nounset sdk install gradle; then
+    ok "Installed Gradle"
+  else
+    fail "Could not install Gradle through SDKMAN"
+  fi
+
+  section "Installing Kotlin CLI"
+
+  if have kotlinc; then
+    ok "Kotlin compiler already available"
+  elif without_nounset sdk install kotlin; then
+    ok "Installed Kotlin through SDKMAN"
+  else
+    fail "Could not install Kotlin through SDKMAN"
+  fi
+else
+  fail "SDKMAN is unavailable, so Java/Gradle/Kotlin SDKMAN installation was skipped"
 fi
 
 # ---------------------------------------------------------------------------
@@ -588,9 +605,9 @@ if have gradle && have java; then
 rootProject.name = "kotlin-hello"
 EOF
 
-  cat > "$SMOKE_ROOT/kotlin-hello/build.gradle.kts" <<'EOF'
+  cat > "$SMOKE_ROOT/kotlin-hello/build.gradle.kts" <<EOF
 plugins {
-    kotlin("jvm") version "2.2.20"
+    kotlin("jvm") version "${KOTLIN_PLUGIN_VERSION}"
     application
 }
 
@@ -648,7 +665,8 @@ EOF
       fail "Docker hello world failed"
     fi
   else
-    warn "Docker is installed but not accessible in this shell yet; log out/in if docker group membership was just added"
+    warn "Docker is installed but this session cannot use the socket yet"
+    warn "If you were just added to the docker group, reboot and re-run. Until then: sudo docker ps"
   fi
 else
   warn "Skipping Docker smoke test: docker missing"

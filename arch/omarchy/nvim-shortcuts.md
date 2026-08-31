@@ -120,7 +120,9 @@ Treesitter moves: `]f` `[f` `]c` `[c`.
 | `Space \|` / `Space -` | Split window right / below |
 | `Space wd` | Close window |
 | `Ctrl-H/J/K/L` | Move between windows |
-| `Alt-j` / `Alt-k` | Move line down / up |
+| `Alt-j` / `Alt-k` | Move line down / up (insert and visual too; keep this over the old Move.nvim maps) |
+| `jj` (insert) | Escape |
+| `Space uL` | Toggle relative numbers |
 
 ---
 

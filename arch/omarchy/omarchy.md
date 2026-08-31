@@ -133,20 +133,19 @@ Odin support depends on the Treesitter version/plugin set in your Omarchy config
 
 ## 4. Check whether LSPs attach
 
-For every language:
-
-1. Open a real project file.
-2. Run:
-
-```vim
-:LspInfo
-```
-
-On current Neovim you can also use:
+Neovim 0.11+ removed `:LspInfo`. On Omarchy (0.12) use:
 
 ```vim
 :checkhealth vim.lsp
 ```
+
+Or, in a real project file:
+
+```vim
+:lua vim.print(vim.lsp.get_clients({ bufnr = 0 }))
+```
+
+Fully quit and reopen Neovim after `apply-stow.sh` or Mason installs; an already-running session will not pick up new extras or servers.
 
 Expected clients:
 
